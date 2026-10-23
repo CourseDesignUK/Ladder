@@ -406,9 +406,22 @@
     gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.5.6/;"
     shadow="type: pcfsoft"
     vr-mode-ui="enabled: true"
-    background="color: #0b111e"
-    fog="type: exponential; color: #0b111e; density: 0.015"
   >
+    <!-- Preloaded Scene Assets -->
+    <a-assets timeout="10000">
+      <img id="skybox-tex" src="./Skybox.jpg" crossorigin="anonymous" />
+    </a-assets>
+
+    <!-- Equirectangular 360 Skybox Dome (./Skybox.jpg) -->
+    <a-sky
+      id="scene-skybox"
+      src="#skybox-tex"
+      radius="500"
+      rotation="0 -90 0"
+      segments-width="64"
+      segments-height="32"
+    ></a-sky>
+
     <!-- Lighting Setup -->
     <a-entity light="type: ambient; color: #94a3b8; intensity: 0.75"></a-entity>
     <a-entity
@@ -856,4 +869,12 @@
      */
     function toggleAutoScale(enabled) {
       ['ladder-base', 'ladder-fly', 'drill-tower', 'fire-appliance'].forEach((slotId) => {
-        const slot
+        const slotEntity = document.getElementById(`slot-${slotId}`);
+        if (slotEntity) {
+          slotEntity.setAttribute('swappable-asset', 'autoScale', enabled);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XR Training Labs | NFCC Ladder Drill Simulator (Quest 3 WebXR)</title>
+  <!-- Tailwind CSS for 2D Glassmorphism HUD -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- A-Frame 1.6.0 (WebXR / Meta Quest 3 Optimized) -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <style>
+    :root {
+      --bg-glass: rgba(15, 23, 42, 0.82);
+      --border-glass: rgba(255, 255, 255, 0.12);
+      --accent-red: #ef4444;
+      --accent-amber: #f59e0b;
+      --accent-cyan: #06b6d4;
+    }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #090d16;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #f8fafc;
+      user-select: none;
+    }
+    .glass-panel {
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glass);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.4);
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+    /* Hide A-Frame default VR button to use custom branded button */
+    .a-enter-vr {
+      display: none !important;
+    }
+  </style>
+
+  <script>
+    /**
+     * ============================================================================
+     * XR TRAINING LABS - STATIC ASSET MANIFEST
+     * Set default URLs here to auto-load production GLB models on startup.
+     * Leave empty ("") to boot with Procedural Low-Poly Fallbacks.
+     * ============================================================================
+     */
+    window.XR_ASSET_MANIFEST = {
+      'ladder-base': {
+        url: '', // e.g., './assets/nfcc_135_base.glb'
+        targetSize: { x: 0.55, y: 5.5, z: 0.22 },
+        autoScale: true
+      },
+      'ladder-fly': {
+        url: '', // e.g., './assets/nfcc_135_fly.glb'
+        targetSize: { x: 0.46, y: 5.5, z: 0.18 },
+        autoScale: true
+      },
+      'drill-tower': {
+        url: '', // e.g., './assets/fsc_drill_tower.glb'
+        targetSize: { x: 4.5, y: 12.5, z: 4.5 },
+        autoScale: true
+      },
+      'fire-appliance': {
+        url: '', // e.g., './assets/scania_wtl_appliance.glb'
+        targetSize: { x: 2.55, y: 3.3, z: 8.2 },
+        autoScale: true
+      }
+    };
+
+    /**
+     * A-FRAME COMPONENT: swappable-asset
+     * Handles hot-swapping between procedural geometry and external GLB/GLTF models
+     * with automatic THREE.Box3 bounding-box normalization and bottom-center pivot alignment.
+     */
+    AFRAME.registerComponent('swappable-asset', {
+      schema: {
+        slotId: { type: 'string', default: '' },
+        modelUrl: { type: 'string', default: '' },
+        targetSize: { type: 'vec3', default: { x: 1, y: 1, z: 1 } },
+        autoScale: { type: 'boolean', default: true }
+      },
+
+      init: function () {
+        this.fallbackEl = this.el.querySelector('.procedural-fallback');
+        this.gltfContainer = document.createElement('a-entity');
+        this.gltfContainer.classList.add('gltf-container');
+        this.el.appendChild(this.gltfContainer);
+
+        this.onModelLoaded = this.onModelLoaded.bind(this);
+        this.onModelError = this.onModelError.bind(this);
+
+        this.gltfContainer.addEventListener('model-loaded', this.onModelLoaded);
+        this.gltfContainer.addEventListener('model-error', this.onModelError);
+
+        // Check static manifest on boot
+        const manifestEntry = window.XR_ASSET_MANIFEST[this.data.slotId];
+        if (manifestEntry && manifestEntry.url) {
+          this.el.setAttribute('swappable-asset', 'modelUrl', manifestEntry.url);
+        }
+      },
+
+      update: function (oldData) {
+        if (oldData.modelUrl !== this.data.modelUrl) {
+          if (this.data.modelUrl && this.data.modelUrl.trim() !== '') {
+            this.loadGltf(this.data.modelUrl);
+          } else {
+            this.restoreFallback();
+          }
+        }
+        if (oldData.autoScale !== undefined && oldData.autoScale !== this.data.autoScale) {
+          const mesh = this.gltfContainer.getObject3D('mesh');
+          if (mesh) this.normalizeMesh(mesh);
+        }
+      },
+
+      loadGltf: function (url) {
+        this.updateUiStatus('LOADING...', 'text-amber-400');
+        this.gltfContainer.removeAttribute('gltf-model');
+        this.gltfContainer.setAttribute('gltf-model', url);
+      },
+
+      onModelLoaded: function (evt) {
+        const mesh = this.gltfContainer.getObject3D('mesh');
+        if (!mesh) return;
+
+        // Optimize materials and shadows for Quest 3
+        mesh.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+            if (node.material) {
+              node.material.envMapIntensity = 1.0;
+              node.material.needsUpdate = true;
+            }
+          }
+        });
+
+        this.normalizeMesh(mesh);
+
+        if (this.fallbackEl) {
+          this.fallbackEl.setAttribute('visible', false);
+        }
+        this.gltfContainer.setAttribute('visible', true);
+        this.updateUiStatus('GLB ACTIVE', 'text-emerald-400');
+      },
+
+      normalizeMesh: function (mesh) {
+        // Reset transform before measuring
+        mesh.position.set(0, 0, 0);
+        mesh.scale.set(1, 1, 1);
+        mesh.updateMatrixWorld(true);
+
+        const box = new THREE.Box3().setFromObject(mesh);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        if (this.data.autoScale && size.y > 0.0001) {
+          // Uniformly scale based on primary height axis (Y) to preserve aspect ratio
+          const scaleFactor = this.data.targetSize.y / size.y;
+          mesh.scale.set(scaleFactor, scaleFactor, scaleFactor);
+          mesh.updateMatrixWorld(true);
+
+          // Recompute bounds post-scale
+          box.setFromObject(mesh);
+          box.getSize(size);
+          box.getCenter(center);
+        }
+
+        // Align bottom-center of bounding box to local (0,0,0) so hinge pivots match NFCC drill physics
+        mesh.position.x = -center.x;
+        mesh.position.y = -box.min.y;
+        mesh.position.z = -center.z;
+      },
+
+      onModelError: function (evt) {
+        console.error(`[XR Asset Engine] Failed to load GLB for slot ${this.data.slotId}:`, evt.detail);
+        this.restoreFallback();
+        this.updateUiStatus('LOAD ERROR (FALLBACK)', 'text-rose-400');
+      },
+
+      restoreFallback: function () {
+        this.gltfContainer.removeAttribute('gltf-model');
+        this.gltfContainer.setAttribute('visible', false);
+        if (this.fallbackEl) {
+          this.fallbackEl.setAttribute('visible', true);
+        }
+        this.updateUiStatus('PROCEDURAL', 'text-cyan-400');
+      },
+
+      updateUiStatus: function (text, colorClass) {
+        const badge = document.getElementById(`status-${this.data.slotId}`);
+        if (badge) {
+          badge.textContent = text;
+          badge.className = `text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900/90 border border-white/10 ${colorClass}`;
+        }
+      }
+    });
+
+    /**
+     * A-FRAME COMPONENT: procedural-ladder-builder
+     * Generates lightweight instanced-style rungs for procedural fallback ladders.
+     */
+    AFRAME.registerComponent('procedural-ladder-rungs', {
+      schema: {
+        count: { type: 'int', default: 16 },
+        spacing: { type: 'number', default: 0.32 },
+        width: { type: 'number', default: 0.48 },
+        color: { type: 'color', default: '#cbd5e1' }
+      },
+      init: function () {
+        const d = this.data;
+        for (let i = 1; i <= d.count; i++) {
+          const rung = document.createElement('a-cylinder');
+          rung.setAttribute('position', `0 ${i * d.spacing} 0`);
+          rung.setAttribute('rotation', '0 0 90');
+          rung.setAttribute('radius', '0.016');
+          rung.setAttribute('height', d.width);
+          rung.setAttribute('color', d.color);
+          rung.setAttribute('metalness', '0.7');
+          rung.setAttribute('roughness', '0.3');
+          this.el.appendChild(rung);
+        }
+      }
+    });
+  </script>
+</head>
+
+<body>
+  <!-- ==========================================================================
+       2D GLASSMORPHISM OVERLAY HUD (Desktop / Mobile / Pre-VR Configuration)
+       ========================================================================== -->
+  <div id="hud-overlay" class="fixed inset-0 pointer-events-none z-50 flex flex-col justify-between p-4 md:p-6">
+    
+    <!-- Top Bar: Brand Identity & Telemetry -->
+    <header class="flex flex-wrap items-center justify-between gap-4 pointer-events-auto">
+      <div class="glass-panel px-4 py-3 rounded-xl flex items-center gap-4">
+        <div class="w-3 h-8 bg-red-600 rounded-sm shadow-[0_0_12px_#ef4444]"></div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono uppercase tracking-widest text-red-400 font-semibold">XR Training Labs</span>
+            <span class="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-slate-300">QUEST 3 WEBXR</span>
+          </div>
+          <h1 class="text-base md:text-lg font-bold tracking-tight text-white">NFCC Standard Drill: 13.5m / 10.5m Extension Ladder</h1>
+        </div>
+      </div>
+
+      <!-- Live Telemetry Readout -->
+      <div class="glass-panel px-4 py-2.5 rounded-xl flex items-center gap-5 font-mono text-xs">
+        <div>
+          <span class="text-slate-400 block text-[10px]">DRILL PHASE</span>
+          <span id="hud-phase-num" class="text-cyan-400 font-bold">STAGE 1 / 5</span>
+        </div>
+        <div class="h-6 w-px bg-white/10"></div>
+        <div>
+          <span class="text-slate-400 block text-[10px]">PITCH ANGLE</span>
+          <span id="hud-pitch-val" class="text-white font-bold">0.0° (STOWED)</span>
+        </div>
+        <div class="h-6 w-px bg-white/10"></div>
+        <div>
+          <span class="text-slate-400 block text-[10px]">HEAD HEIGHT</span>
+          <span id="hud-height-val" class="text-amber-400 font-bold">1.2m</span>
+        </div>
+        <div class="h-6 w-px bg-white/10"></div>
+        <button id="btn-toggle-assets" onclick="toggleAssetDrawer()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-cyan-500/40 text-cyan-300 font-sans font-medium transition flex items-center gap-2">
+          <span>GLB Asset Swapper</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Middle Area: Collapsible GLB Asset Manager Drawer -->
+    <aside id="asset-drawer" class="glass-panel w-full max-w-md rounded-2xl p-5 pointer-events-auto self-end my-auto max-h-[70vh] flex flex-col transition-all duration-200">
+      <div class="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
+        <div>
+          <h2 class="text-sm font-bold uppercase tracking-wider text-white">GLB / GLTF Model Swapper</h2>
+          <p class="text-[11px] text-slate-400">Hot-swap procedural meshes with high-fidelity CAD/Blender `.glb` files. Auto-normalizes bounds & pivot points.</p>
+        </div>
+        <button onclick="toggleAssetDrawer()" class="text-slate-400 hover:text-white text-xs font-mono px-2 py-1 rounded bg-white/5">HIDE</button>
+      </div>
+
+      <!-- Asset Slot List -->
+      <div class="space-y-3 overflow-y-auto custom-scroll pr-1 flex-1">
+        
+        <!-- Slot 1: Ladder Base -->
+        <div class="p-3 rounded-xl bg-slate-900/60 border border-white/10 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-white">1. Ladder Main Base Section</span>
+            <span id="status-ladder-base" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900/90 border border-white/10 text-cyan-400">PROCEDURAL</span>
+          </div>
+          <div class="flex gap-2">
+            <label class="flex-1 cursor-pointer bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-200 text-xs py-1.5 px-3 rounded-lg text-center font-medium transition">
+              Upload .GLB
+              <input type="file" accept=".glb,.gltf" class="hidden" onchange="handleFileUpload(event, 'ladder-base')" />
+            </label>
+            <button onclick="promptAssetUrl('ladder-base')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-white/10">URL</button>
+            <button onclick="resetAssetSlot('ladder-base')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-400 border border-white/10">Reset</button>
+          </div>
+        </div>
+
+        <!-- Slot 2: Ladder Fly -->
+        <div class="p-3 rounded-xl bg-slate-900/60 border border-white/10 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-white">2. Ladder Extending Fly Section</span>
+            <span id="status-ladder-fly" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900/90 border border-white/10 text-cyan-400">PROCEDURAL</span>
+          </div>
+          <div class="flex gap-2">
+            <label class="flex-1 cursor-pointer bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-200 text-xs py-1.5 px-3 rounded-lg text-center font-medium transition">
+              Upload .GLB
+              <input type="file" accept=".glb,.gltf" class="hidden" onchange="handleFileUpload(event, 'ladder-fly')" />
+            </label>
+            <button onclick="promptAssetUrl('ladder-fly')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-white/10">URL</button>
+            <button onclick="resetAssetSlot('ladder-fly')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-400 border border-white/10">Reset</button>
+          </div>
+        </div>
+
+        <!-- Slot 3: Drill Tower -->
+        <div class="p-3 rounded-xl bg-slate-900/60 border border-white/10 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-white">3. 4-Storey Training Drill Tower</span>
+            <span id="status-drill-tower" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900/90 border border-white/10 text-cyan-400">PROCEDURAL</span>
+          </div>
+          <div class="flex gap-2">
+            <label class="flex-1 cursor-pointer bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-200 text-xs py-1.5 px-3 rounded-lg text-center font-medium transition">
+              Upload .GLB
+              <input type="file" accept=".glb,.gltf" class="hidden" onchange="handleFileUpload(event, 'drill-tower')" />
+            </label>
+            <button onclick="promptAssetUrl('drill-tower')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-white/10">URL</button>
+            <button onclick="resetAssetSlot('drill-tower')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-400 border border-white/10">Reset</button>
+          </div>
+        </div>
+
+        <!-- Slot 4: Fire Appliance -->
+        <div class="p-3 rounded-xl bg-slate-900/60 border border-white/10 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-white">4. UK Type-B Fire Appliance (Pump)</span>
+            <span id="status-fire-appliance" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900/90 border border-white/10 text-cyan-400">PROCEDURAL</span>
+          </div>
+          <div class="flex gap-2">
+            <label class="flex-1 cursor-pointer bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-200 text-xs py-1.5 px-3 rounded-lg text-center font-medium transition">
+              Upload .GLB
+              <input type="file" accept=".glb,.gltf" class="hidden" onchange="handleFileUpload(event, 'fire-appliance')" />
+            </label>
+            <button onclick="promptAssetUrl('fire-appliance')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-white/10">URL</button>
+            <button onclick="resetAssetSlot('fire-appliance')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-400 border border-white/10">Reset</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Normalization Toggle -->
+      <div class="pt-3 mt-3 border-t border-white/10 flex items-center justify-between text-xs">
+        <span class="text-slate-300">Auto-Normalize Scale & Bottom Pivot</span>
+        <input id="chk-autoscale" type="checkbox" checked onchange="toggleAutoScale(this.checked)" class="accent-red-500 w-4 h-4 cursor-pointer" />
+      </div>
+    </aside>
+
+    <!-- Bottom Bar: NFCC Drill Step Controls & Enter VR -->
+    <footer class="flex flex-wrap items-end justify-between gap-4 pointer-events-auto">
+      <div class="glass-panel p-4 rounded-2xl max-w-2xl flex-1">
+        <div class="flex items-center justify-between mb-1">
+          <span id="hud-stage-title" class="text-sm font-bold text-red-400 uppercase tracking-wide">Stage 1: Pre-Pitch Hazard Assessment & Carry</span>
+          <span id="hud-command-badge" class="text-[11px] font-mono bg-red-500/20 border border-red-500/40 text-red-200 px-2 py-0.5 rounded">CMD: "GROUND LADDER"</span>
+        </div>
+        <p id="hud-stage-desc" class="text-xs text-slate-300 leading-relaxed mb-3">
+          Inspect overhead cables and ground stability. Crew carries ladder horizontally at shoulder height and grounds heel 2.2m from drill tower face.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="setDrillStage(0)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 text-white transition">1. Ground</button>
+          <button onclick="setDrillStage(1)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">2. Pitch (75°)</button>
+          <button onclick="setDrillStage(2)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">3. Extend & Pawls</button>
+          <button onclick="setDrillStage(3)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">4. Foot & Climb</button>
+          <button onclick="setDrillStage(4)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">5. Make Up</button>
+        </div>
+      </div>
+
+      <!-- Camera POV & Meta Quest 3 VR Launch -->
+      <div class="flex items-center gap-3">
+        <button onclick="resetCameraPov()" class="glass-panel px-4 py-3.5 rounded-2xl text-xs font-semibold text-slate-200 hover:border-white/30 transition">
+          Reset Yard POV
+        </button>
+        <button onclick="enterQuestVR()" class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-sm shadow-[0_0_25px_rgba(239,68,68,0.5)] border border-red-400/30 transition">
+          ENTER QUEST 3 VR
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ==========================================================================
+       A-FRAME 3D / WEBXR SCENE (Meta Quest 3 Optimized)
+       ========================================================================== -->
+  <a-scene
+    id="xr-scene"
+    renderer="antialias: true; colorManagement: true; physicallyCorrectLights: true; highRefreshRate: true; foveationLevel: 2; exposure: 1.1"
+    gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.5.6/;"
+    shadow="type: pcfsoft"
+    vr-mode-ui="enabled: true"
+    background="color: #0b111e"
+    fog="type: exponential; color: #0b111e; density: 0.015"
+  >
+    <!-- Lighting Setup -->
+    <a-entity light="type: ambient; color: #94a3b8; intensity: 0.75"></a-entity>
+    <a-entity
+      light="type: directional; color: #fffbeb; intensity: 2.2; castShadow: true; shadowMapWidth: 2048; shadowMapHeight: 2048; shadowCameraNear: 0.5; shadowCameraFar: 35; shadowCameraLeft: -12; shadowCameraRight: 12; shadowCameraTop: 15; shadowCameraBottom: -5"
+      position="6 14 8"
+    ></a-entity>
+    <!-- Emergency Blue Beacon Accent Light -->
+    <a-entity light="type: point; color: #3b82f6; intensity: 1.5; distance: 12" position="-5.5 3.6 -3.5"></a-entity>
+
+    <!-- ========================================================================
+         PLAYER CAMERA RIG & META QUEST 3 CONTROLLERS
+         ======================================================================== -->
+    <a-entity id="camera-rig" position="0 0 4.5" rotation="0 0 0">
+      <a-camera id="main-camera" position="0 1.65 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
+        <!-- Subtle Center Reticle for Non-VR Desktop Click -->
+        <a-entity
+          cursor="fuse: false; rayOrigin: mouse"
+          raycaster="objects: .interactable"
+        ></a-entity>
+      </a-camera>
+
+      <!-- Left Quest 3 Controller -->
+      <a-entity
+        id="left-hand"
+        laser-controls="hand: left"
+        raycaster="objects: .interactable; far: 15; lineColor: #ef4444; lineOpacity: 0.85"
+      ></a-entity>
+
+      <!-- Right Quest 3 Controller -->
+      <a-entity
+        id="right-hand"
+        laser-controls="hand: right"
+        raycaster="objects: .interactable; far: 15; lineColor: #06b6d4; lineOpacity: 0.85"
+      ></a-entity>
+    </a-entity>
+
+    <!-- ========================================================================
+         DRILL YARD ENVIRONMENT & NFCC 4:1 SAFE PITCH FLOOR MARKINGS
+         ======================================================================== -->
+    <a-entity id="drill-yard">
+      <!-- Asphalt Ground Plane -->
+      <a-plane position="0 0 0" rotation="-90 0 0" width="60" height="60" color="#111827" roughness="0.9" metalness="0.1" receive-shadow></a-plane>
+      
+      <!-- Tactical Grid Overlay -->
+      <a-grid width="60" height="60" cell-size="1" cell-color="#1e293b" section-size="5" section-color="#334155" position="0 0.01 0"></a-grid>
+
+      <!-- NFCC 4:1 Safe Pitch Zone Indicator (2.2m out from tower face at Z = -1.8) -->
+      <a-plane position="0 0.02 -1.8" rotation="-90 0 0" width="1.6" height="0.6" color="#f59e0b" opacity="0.25"></a-plane>
+      <a-ring position="0 0.025 -1.8" rotation="-90 0 0" radius-inner="0.32" radius-outer="0.38" color="#f59e0b"></a-ring>
+      <a-text
+        value="NFCC 4:1 HEEL ZONE (75 DEG)"
+        position="0 0.03 -1.35"
+        rotation="-90 0 0"
+        align="center"
+        width="3.2"
+        color="#fbbf24"
+        font="monoid"
+      ></a-text>
+    </a-entity>
+
+    <!-- ========================================================================
+         SWAPPABLE SLOT 3: 4-STOREY TRAINING DRILL TOWER (Face at Z = -4.0)
+         ======================================================================== -->
+    <a-entity
+      id="slot-drill-tower"
+      position="0 0 -6.25"
+      swappable-asset="slotId: drill-tower; targetSize: 4.5 12.5 4.5; autoScale: true"
+    >
+      <a-entity class="procedural-fallback">
+        <!-- Main Concrete Structure (Depth 4.5m -> front face sits at Z = -4.0 in world space) -->
+        <a-box position="0 6.25 0" width="4.5" height="12.5" depth="4.5" color="#334155" roughness="0.85" cast-shadow receive-shadow></a-box>
+        
+        <!-- Floor Ledges & Window Openings -->
+        <!-- 1st Floor (3.2m) -->
+        <a-box position="0 3.2 2.28" width="4.6" height="0.18" depth="0.2" color="#475569"></a-box>
+        <a-box position="0 4.2 2.26" width="1.3" height="1.8" depth="0.1" color="#0f172a"></a-box>
+        
+        <!-- 2nd Floor Target Window (6.8m Sill Height) -->
+        <a-box position="0 6.8 2.28" width="4.6" height="0.22" depth="0.25" color="#ef4444"></a-box>
+        <a-box position="0 7.8 2.26" width="1.3" height="1.8" depth="0.1" color="#090d16"></a-box>
+        <!-- Target Sill Marker -->
+        <a-text value="TARGET SILL (6.8m) - MIN 3 RUNGS ABOVE" position="0 8.95 2.3" align="center" width="4" color="#f87171" font="monoid"></a-text>
+
+        <!-- 3rd Floor (10.0m) -->
+        <a-box position="0 10.0 2.28" width="4.6" height="0.18" depth="0.2" color="#475569"></a-box>
+        <a-box position="0 11.0 2.26" width="1.3" height="1.6" depth="0.1" color="#0f172a"></a-box>
+
+        <!-- Roof Safety Parapet -->
+        <a-box position="0 12.6 2.2" width="4.5" height="0.4" depth="0.15" color="#ef4444"></a-box>
+      </a-entity>
+    </a-entity>
+
+    <!-- ========================================================================
+         SWAPPABLE SLOT 4: UK TYPE-B WATER LADDER APPLIANCE
+         ======================================================================== -->
+    <a-entity
+      id="slot-fire-appliance"
+      position="-5.5 0 -3.5"
+      rotation="0 25 0"
+      swappable-asset="slotId: fire-appliance; targetSize: 2.55 3.3 8.2; autoScale: true"
+    >
+      <a-entity class="procedural-fallback">
+        <!-- Appliance Body -->
+        <a-box position="0 1.55 -0.6" width="2.5" height="2.3" depth="5.6" color="#dc2626" metalness="0.3" roughness="0.4" cast-shadow></a-box>
+        <!-- Roller Shutters -->
+        <a-box position="1.26 1.55 -0.6" width="0.05" height="1.6" depth="4.8" color="#cbd5e1" metalness="0.8" roughness="0.2"></a-box>
+        <!-- Crew Cab -->
+        <a-box position="0 1.65 2.9" width="2.5" height="2.5" depth="2.2" color="#b91c1c" metalness="0.3" roughness="0.4" cast-shadow></a-box>
+        <!-- Windshield -->
+        <a-plane position="0 2.1 4.01" width="2.2" height="0.9" color="#0f172a" roughness="0.1" metalness="0.9"></a-plane>
+        <!-- High-Vis Battenburg Side Strip -->
+        <a-box position="1.27 0.85 -0.2" width="0.04" height="0.35" depth="6.8" color="#eab308"></a-box>
+        <!-- Lightbar -->
+        <a-box position="0 3.0 3.5" width="1.8" height="0.18" depth="0.35" color="#2563eb" emissive="#1d4ed8" emissive-intensity="0.8"></a-box>
+        <!-- Wheels -->
+        <a-cylinder position="1.2 0.5 2.8" rotation="0 0 90" radius="0.5" height="0.35" color="#1e293b"></a-cylinder>
+        <a-cylinder position="-1.2 0.5 2.8" rotation="0 0 90" radius="0.5" height="0.35" color="#1e293b"></a-cylinder>
+        <a-cylinder position="1.2 0.5 -2.2" rotation="0 0 90" radius="0.5" height="0.35" color="#1e293b"></a-cylinder>
+        <a-cylinder position="-1.2 0.5 -2.2" rotation="0 0 90" radius="0.5" height="0.35" color="#1e293b"></a-cylinder>
+      </a-entity>
+    </a-entity>
+
+    <!-- ========================================================================
+         ARTICULATED LADDER RIG (Heel Pivot at 0, 0.05, -1.8)
+         Stage 1 starts horizontal (rotation -90 0 0), pitches to -15 deg (75 deg pitch)
+         ======================================================================== -->
+    <a-entity id="ladder-heel-pivot" position="0 0.05 -1.8" rotation="-88 0 0">
+      
+      <!-- SWAPPABLE SLOT 1: LADDER MAIN BASE SECTION -->
+      <a-entity
+        id="slot-ladder-base"
+        position="0 0 0"
+        swappable-asset="slotId: ladder-base; targetSize: 0.55 5.5 0.22; autoScale: true"
+      >
+        <a-entity class="procedural-fallback">
+          <!-- Left & Right Aluminium Strings -->
+          <a-box position="-0.25 2.75 0" width="0.045" height="5.5" depth="0.18" color="#e2e8f0" metalness="0.75" roughness="0.25" cast-shadow></a-box>
+          <a-box position="0.25 2.75 0" width="0.045" height="5.5" depth="0.18" color="#e2e8f0" metalness="0.75" roughness="0.25" cast-shadow></a-box>
+          <!-- Rubber Heel Blocks -->
+          <a-box position="-0.25 0.08 0" width="0.07" height="0.16" depth="0.22" color="#ef4444"></a-box>
+          <a-box position="0.25 0.08 0" width="0.07" height="0.16" depth="0.22" color="#ef4444"></a-box>
+          <!-- Procedural Rungs -->
+          <a-entity procedural-ladder-rungs="count: 16; spacing: 0.32; width: 0.5"></a-entity>
+        </a-entity>
+      </a-entity>
+
+      <!-- SWAPPABLE SLOT 2: LADDER EXTENDING FLY SECTION (Slides along Local Y) -->
+      <a-entity
+        id="ladder-fly-carriage"
+        position="0 0.15 -0.08"
+      >
+        <a-entity
+          id="slot-ladder-fly"
+          swappable-asset="slotId: ladder-fly; targetSize: 0.46 5.5 0.18; autoScale: true"
+        >
+          <a-entity class="procedural-fallback">
+            <!-- Inner Fly Strings -->
+            <a-box position="-0.21 2.75 0" width="0.04" height="5.5" depth="0.15" color="#f8fafc" metalness="0.8" roughness="0.2" cast-shadow></a-box>
+            <a-box position="0.21 2.75 0" width="0.04" height="5.5" depth="0.15" color="#f8fafc" metalness="0.8" roughness="0.2" cast-shadow></a-box>
+            <!-- High-Visibility Red Head Rounds / Rubbing Bunnies -->
+            <a-cylinder position="-0.21 5.45 0.08" rotation="0 0 90" radius="0.07" height="0.08" color="#ef4444"></a-cylinder>
+            <a-cylinder position="0.21 5.45 0.08" rotation="0 0 90" radius="0.07" height="0.08" color="#ef4444"></a-cylinder>
+            <!-- Procedural Fly Rungs -->
+            <a-entity procedural-ladder-rungs="count: 16; spacing: 0.32; width: 0.42; color: #f1f5f9"></a-entity>
+          </a-entity>
+        </a-entity>
+      </a-entity>
+
+    </a-entity>
+
+    <!-- ========================================================================
+         IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (For Quest 3 Controllers)
+         ======================================================================== -->
+    <a-entity id="vr-control-console" position="2.3 1.25 1.8" rotation="0 -35 0">
+      <!-- Console Backing Frame -->
+      <a-box position="0 0 -0.04" width="1.75" height="1.15" depth="0.05" color="#0f172a" metalness="0.5" roughness="0.4"></a-box>
+      <a-plane position="0 0 -0.01" width="1.7" height="1.1" color="#1e293b"></a-plane>
+      <!-- Red Header Accent -->
+      <a-plane position="0 0.46 0.005" width="1.62" height="0.11" color="#dc2626"></a-plane>
+      <a-text value="XR TRAINING LABS | NFCC DRILL CONSOLE" position="0 0.46 0.01" align="center" width="2.2" color="#ffffff" font="monoid"></a-text>
+
+      <!-- Live 3D Stage Readout -->
+      <a-text id="vr-console-title" value="STAGE 1: GROUND LADDER" position="0 0.31 0.01" align="center" width="2.1" color="#38bdf8" font="monoid"></a-text>
+      <a-text id="vr-console-telemetry" value="PITCH: 0.0 DEG | EXTENSION: 5.5m" position="0 0.21 0.01" align="center" width="1.8" color="#fbbf24" font="monoid"></a-text>
+
+      <!-- 3D Interactive Stage Buttons (Raycaster Class: .interactable) -->
+      <a-box
+        class="interactable"
+        position="-0.48 0.04 0.02"
+        width="0.72"
+        height="0.14"
+        depth="0.03"
+        color="#334155"
+        onclick="setDrillStage(0)"
+        animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
+        animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
+      >
+        <a-text value="1. GROUND LADDER" position="0 0 0.02" align="center" width="1.6" color="#ffffff"></a-text>
+      </a-box>
+
+      <a-box
+        class="interactable"
+        position="0.48 0.04 0.02"
+        width="0.72"
+        height="0.14"
+        depth="0.03"
+        color="#334155"
+        onclick="setDrillStage(1)"
+        animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
+        animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
+      >
+        <a-text value="2. PITCH TO 75 DEG" position="0 0 0.02" align="center" width="1.6" color="#ffffff"></a-text>
+      </a-box>
+
+      <a-box
+        class="interactable"
+        position="-0.48 -0.15 0.02"
+        width="0.72"
+        height="0.14"
+        depth="0.03"
+        color="#334155"
+        onclick="setDrillStage(2)"
+        animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
+        animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
+      >
+        <a-text value="3. EXTEND & LOCK PAWLS" position="0 0 0.02" align="center" width="1.6" color="#ffffff"></a-text>
+      </a-box>
+
+      <a-box
+        class="interactable"
+        position="0.48 -0.15 0.02"
+        width="0.72"
+        height="0.14"
+        depth="0.03"
+        color="#dc2626"
+        onclick="setDrillStage(3)"
+        animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
+        animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
+      >
+        <a-text value="4. FOOT & CLIMB POV" position="0 0 0.02" align="center" width="1.6" color="#ffffff"></a-text>
+      </a-box>
+
+      <a-box
+        class="interactable"
+        position="0 -0.35 0.02"
+        width="1.68"
+        height="0.14"
+        depth="0.03"
+        color="#0f172a"
+        onclick="setDrillStage(4)"
+        animation__mouseenter="property: scale; to: 1.03 1.03 1.03; startEvents: mouseenter; dur: 120"
+        animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
+      >
+        <a-text value="5. LOWER, MAKE UP & RETURN TO YARD POV" position="0 0 0.02" align="center" width="1.8" color="#38bdf8"></a-text>
+      </a-box>
+    </a-entity>
+
+  </a-scene>
+
+  <!-- ==========================================================================
+       APPLICATION LOGIC: NFCC DRILL STATE MACHINE & ASSET UPLOAD HANDLERS
+       ========================================================================== -->
+  <script>
+    const NFCC_DRILL_STAGES = [
+      {
+        title: 'Stage 1: Pre-Pitch Hazard Assessment & Grounding',
+        command: 'CMD: "GROUND LADDER"',
+        desc: 'Inspect overhead hazards and ground stability. Under-run ladder setup: heel placed in the 4:1 NFCC footprint zone (2.2m from tower face).',
+        heelRotationX: -88, // Horizontal on ground
+        flyExtensionY: 0.15,
+        pitchLabel: '2.0° (GROUNDED)',
+        heightLabel: '5.5m (HOUSED)',
+        rigPos: '0 0 4.5'
+      },
+      {
+        title: 'Stage 2: Under-Running & Pitching to 75° (4:1 Ratio)',
+        command: 'CMD: "PITCH LADDER"',
+        desc: 'No. 1 footings the heel with both boots on the bottom round; crew under-runs ladder upright to a 75° working angle.',
+        heelRotationX: -15, // 90 - 15 = 75 degrees pitch
+        flyExtensionY: 0.15,
+        pitchLabel: '75.0° (4:1 OPTIMAL)',
+        heightLabel: '5.3m (BASE)',
+        rigPos: '0 0 4.5'
+      },
+      {
+        title: 'Stage 3: Extending Fly, Engaging Pawls & Head Bedding',
+        command: 'CMD: "EXTEND... WELL!"',
+        desc: 'Haul extending line smoothly until head extends 3 full rounds above the 6.8m 2nd-floor window sill. Engage pawls and tie off halyard.',
+        heelRotationX: -15,
+        flyExtensionY: 3.1, // Extends to ~8.6m total length
+        pitchLabel: '75.0° (PAWLS LOCKED)',
+        heightLabel: '8.4m (3 RUNGS OVER)',
+        rigPos: '0 0 4.5'
+      },
+      {
+        title: 'Stage 4: Bracing (Footing) & Tactical Ascent to Sill',
+        command: 'CMD: "CLIMB & LEG LOCK"',
+        desc: 'Firefighter braces strings and ankles. Climber maintains rhythmic step-and-hand contact, ascending to the 2nd-floor window sill.',
+        heelRotationX: -15,
+        flyExtensionY: 3.1,
+        pitchLabel: '75.0° (FOOTED)',
+        heightLabel: '8.4m (AT SILL POV)',
+        rigPos: '0 5.4 -3.1' // Elevates camera rig to 2nd floor window head height
+      },
+      {
+        title: 'Stage 5: Descent, Disengaging Pawls & Making Up',
+        command: 'CMD: "MAKE UP"',
+        desc: 'Climber descends cleanly. Disengage pawls, house extending section gently, check around prior to lowering to ground.',
+        heelRotationX: -88,
+        flyExtensionY: 0.15,
+        pitchLabel: '2.0° (MADE UP)',
+        heightLabel: '5.5m (HOUSED)',
+        rigPos: '0 0 4.5'
+      }
+    ];
+
+    let activeBlobUrls = {};
+
+    function setDrillStage(index) {
+      const stage = NFCC_DRILL_STAGES[index];
+      if (!stage) return;
+
+      // Update 2D HUD Texts
+      document.getElementById('hud-phase-num').textContent = `STAGE ${index + 1} / 5`;
+      document.getElementById('hud-pitch-val').textContent = stage.pitchLabel;
+      document.getElementById('hud-height-val').textContent = stage.heightLabel;
+      document.getElementById('hud-stage-title').textContent = stage.title;
+      document.getElementById('hud-command-badge').textContent = stage.command;
+      document.getElementById('hud-stage-desc').textContent = stage.desc;
+
+      // Update 2D Button Highlights
+      const buttons = document.querySelectorAll('.stage-btn');
+      buttons.forEach((btn, idx) => {
+        if (idx === index) {
+          btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 text-white transition';
+        } else {
+          btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition';
+        }
+      });
+
+      // Update 3D Diegetic VR Console Text
+      const vrTitle = document.getElementById('vr-console-title');
+      const vrTelemetry = document.getElementById('vr-console-telemetry');
+      if (vrTitle) vrTitle.setAttribute('value', stage.title.toUpperCase());
+      if (vrTelemetry) vrTelemetry.setAttribute('value', `PITCH: ${stage.pitchLabel} | HEIGHT: ${stage.heightLabel}`);
+
+      // Animate Ladder Heel Pivot
+      const heelPivot = document.getElementById('ladder-heel-pivot');
+      heelPivot.setAttribute('animation__pitch', {
+        property: 'rotation',
+        to: `${stage.heelRotationX} 0 0`,
+        dur: 1600,
+        easing: 'easeInOutQuad'
+      });
+
+      // Animate Extending Fly Section
+      const flyCarriage = document.getElementById('ladder-fly-carriage');
+      flyCarriage.setAttribute('animation__extend', {
+        property: 'position',
+        to: `0 ${stage.flyExtensionY} -0.08`,
+        dur: 1600,
+        easing: 'easeInOutQuad'
+      });
+
+      // Animate Camera Rig for Climb POV
+      const cameraRig = document.getElementById('camera-rig');
+      cameraRig.setAttribute('animation__climb', {
+        property: 'position',
+        to: stage.rigPos,
+        dur: 2200,
+        easing: 'easeInOutCubic'
+      });
+    }
+
+    function resetCameraPov() {
+      const cameraRig = document.getElementById('camera-rig');
+      cameraRig.removeAttribute('animation__climb');
+      cameraRig.setAttribute('position', '0 0 4.5');
+    }
+
+    function enterQuestVR() {
+      const sceneEl = document.getElementById('xr-scene');
+      if (sceneEl && sceneEl.enterVR) {
+        sceneEl.enterVR();
+      }
+    }
+
+    function toggleAssetDrawer() {
+      const drawer = document.getElementById('asset-drawer');
+      drawer.classList.toggle('hidden');
+    }
+
+    /**
+     * Local File Upload Handler (.glb / .gltf via Blob URL)
+     */
+    function handleFileUpload(event, slotId) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // Revoke old blob URL if present to avoid memory leaks on Quest 3
+      if (activeBlobUrls[slotId]) {
+        URL.revokeObjectURL(activeBlobUrls[slotId]);
+      }
+
+      const blobUrl = URL.createObjectURL(file);
+      activeBlobUrls[slotId] = blobUrl;
+
+      const slotEntity = document.getElementById(`slot-${slotId}`);
+      if (slotEntity) {
+        slotEntity.setAttribute('swappable-asset', 'modelUrl', blobUrl);
+      }
+    }
+
+    /**
+     * Load External GLB via Direct URL
+     */
+    function promptAssetUrl(slotId) {
+      const current = window.XR_ASSET_MANIFEST[slotId]?.url || '';
+      const url = window.prompt(`Enter direct URL or relative path for [${slotId}] (.glb / .gltf):`, current);
+      if (url !== null && url.trim() !== '') {
+        const slotEntity = document.getElementById(`slot-${slotId}`);
+        if (slotEntity) {
+          slotEntity.setAttribute('swappable-asset', 'modelUrl', url.trim());
+        }
+      }
+    }
+
+    /**
+     * Reset Slot to Procedural Mesh Fallback
+     */
+    function resetAssetSlot(slotId) {
+      if (activeBlobUrls[slotId]) {
+        URL.revokeObjectURL(activeBlobUrls[slotId]);
+        delete activeBlobUrls[slotId];
+      }
+      const slotEntity = document.getElementById(`slot-${slotId}`);
+      if (slotEntity) {
+        slotEntity.setAttribute('swappable-asset', 'modelUrl', '');
+      }
+    }
+
+    /**
+     * Toggle Bounding-Box Auto-Normalization Across All Slots
+     */
+    function toggleAutoScale(enabled) {
+      ['ladder-base', 'ladder-fly', 'drill-tower', 'fire-appliance'].forEach((slotId) => {
+        const slotEntity = document.getElementById(`slot-${slotId}`);
+        if (slotEntity) {
+          slotEntity.setAttribute('swappable-asset', 'autoScale', enabled);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

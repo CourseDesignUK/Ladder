@@ -1,4 +1,4 @@
-# XR Training Labs | NFCC Ladder Drill Simulator (WebXR)
+ NFCC Ladder Drill Simulator (WebXR)
 
 Single-file WebXR training application demonstrating UK Fire & Rescue Service National Fire Chiefs Council (NFCC) standard 13.5m / 10.5m extension ladder drills. Engineered for standalone execution on Meta Quest 3 / 3S headsets and desktop browsers.
 

@@ -39,86 +39,6 @@
 
   <script>
     /**
-     * A-FRAME COMPONENT: striker-loader
-     * Loads ./Striker.glb and normalizes its longest horizontal footprint axis to 12.0m
-     * with bottom-center pivot alignment so it never scales excessively or clips the tower.
-     */
-    AFRAME.registerComponent('striker-loader', {
-      schema: {
-        src: { type: 'string', default: './Striker.glb' },
-        targetLength: { type: 'number', default: 12.0 }
-      },
-
-      init: function () {
-        this.fallbackEl = this.el.querySelector('.procedural-fallback');
-        this.gltfContainer = document.createElement('a-entity');
-        this.el.appendChild(this.gltfContainer);
-
-        this.onModelLoaded = this.onModelLoaded.bind(this);
-        this.onModelError = this.onModelError.bind(this);
-
-        this.gltfContainer.addEventListener('model-loaded', this.onModelLoaded);
-        this.gltfContainer.addEventListener('model-error', this.onModelError);
-
-        this.gltfContainer.setAttribute('gltf-model', this.data.src);
-      },
-
-      onModelLoaded: function () {
-        const mesh = this.gltfContainer.getObject3D('mesh');
-        if (!mesh) return;
-
-        mesh.traverse((node) => {
-          if (node.isMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
-            if (node.material) {
-              node.material.envMapIntensity = 1.0;
-              node.material.needsUpdate = true;
-            }
-          }
-        });
-
-        // Reset transform before measuring raw bounding box
-        mesh.position.set(0, 0, 0);
-        mesh.scale.set(1, 1, 1);
-        mesh.updateMatrixWorld(true);
-
-        const box = new THREE.Box3().setFromObject(mesh);
-        const size = new THREE.Vector3();
-        const center = new THREE.Vector3();
-        box.getSize(size);
-
-        // Scale uniformly by longest horizontal axis (X or Z) so vehicle length is strictly 12.0m
-        const maxHorizontalSpan = Math.max(size.x, size.z, size.y);
-        if (maxHorizontalSpan > 0.0001) {
-          const scaleFactor = this.data.targetLength / maxHorizontalSpan;
-          mesh.scale.set(scaleFactor, scaleFactor, scaleFactor);
-          mesh.updateMatrixWorld(true);
-
-          box.setFromObject(mesh);
-          box.getSize(size);
-          box.getCenter(center);
-        }
-
-        // Align bottom-center of bounding box to local (0, 0, 0)
-        mesh.position.x = -center.x;
-        mesh.position.y = -box.min.y;
-        mesh.position.z = -center.z;
-
-        if (this.fallbackEl) {
-          this.fallbackEl.setAttribute('visible', false);
-        }
-      },
-
-      onModelError: function (evt) {
-        console.warn('[XR Scene] Striker.glb failed to load; keeping procedural fallback:', evt.detail);
-        if (this.fallbackEl) {
-          this.fallbackEl.setAttribute('visible', true);
-        }
-      }
-    });
-
-    /**
      * A-FRAME COMPONENT: procedural-ladder-rungs
      * Generates lightweight rungs for the extension ladder sections.
      */
@@ -221,13 +141,13 @@
   <a-scene
     id="xr-scene"
     renderer="antialias: true; colorManagement: true; physicallyCorrectLights: true; highRefreshRate: true; foveationLevel: 2; exposure: 1.1"
-    gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.5.6/;"
     shadow="type: pcfsoft"
     vr-mode-ui="enabled: true"
   >
-    <!-- Preloaded Scene Assets -->
-    <a-assets timeout="10000">
+    <!-- Preloaded Scene Assets (Skybox.jpg & medieval_red_brick_diff_4k.jpg) -->
+    <a-assets timeout="15000">
       <img id="skybox-tex" src="./Skybox.jpg" crossorigin="anonymous" />
+      <img id="brick-tex" src="./medieval_red_brick_diff_4k.jpg" crossorigin="anonymous" />
     </a-assets>
 
     <!-- Equirectangular 360 Skybox Dome (./Skybox.jpg) -->
@@ -241,13 +161,11 @@
     ></a-sky>
 
     <!-- Lighting Setup -->
-    <a-entity light="type: ambient; color: #94a3b8; intensity: 0.75"></a-entity>
+    <a-entity light="type: ambient; color: #94a3b8; intensity: 0.8"></a-entity>
     <a-entity
-      light="type: directional; color: #fffbeb; intensity: 2.2; castShadow: true; shadowMapWidth: 2048; shadowMapHeight: 2048; shadowCameraNear: 0.5; shadowCameraFar: 40; shadowCameraLeft: -20; shadowCameraRight: 15; shadowCameraTop: 15; shadowCameraBottom: -10"
+      light="type: directional; color: #fffbeb; intensity: 2.2; castShadow: true; shadowMapWidth: 2048; shadowMapHeight: 2048; shadowCameraNear: 0.5; shadowCameraFar: 35; shadowCameraLeft: -12; shadowCameraRight: 12; shadowCameraTop: 15; shadowCameraBottom: -5"
       position="6 14 8"
     ></a-entity>
-    <!-- Emergency Blue Beacon Accent Light (Aligned above new Striker position) -->
-    <a-entity light="type: point; color: #3b82f6; intensity: 1.8; distance: 14" position="-11.5 4.2 2.0"></a-entity>
 
     <!-- ========================================================================
          PLAYER CAMERA RIG & META QUEST 3 CONTROLLERS
@@ -301,14 +219,22 @@
     </a-entity>
 
     <!-- ========================================================================
-         4-STOREY TRAINING DRILL TOWER (Bounds: X -2.25 to +2.25, Z -4.0 to -8.5)
+         4-STOREY TRAINING DRILL TOWER (Textured with medieval_red_brick_diff_4k.jpg)
          ======================================================================== -->
     <a-entity id="drill-tower" position="0 0 -6.25">
-      <!-- Main Concrete Structure (Depth 4.5m -> front face sits at Z = -4.0 in world space) -->
-      <a-box position="0 6.25 0" width="4.5" height="12.5" depth="4.5" color="#334155" roughness="0.85" cast-shadow receive-shadow></a-box>
+      <!-- Main Brick Structure (Depth 4.5m -> front face sits at Z = -4.0 in world space) -->
+      <a-box
+        position="0 6.25 0"
+        width="4.5"
+        height="12.5"
+        depth="4.5"
+        material="src: #brick-tex; repeat: 3 8; roughness: 0.9; metalness: 0.05"
+        cast-shadow
+        receive-shadow
+      ></a-box>
       
-      <!-- 1st Floor (3.2m) -->
-      <a-box position="0 3.2 2.28" width="4.6" height="0.18" depth="0.2" color="#475569"></a-box>
+      <!-- 1st Floor Concrete Sill & Window Opening (3.2m) -->
+      <a-box position="0 3.2 2.28" width="4.6" height="0.18" depth="0.2" color="#475569" roughness="0.8"></a-box>
       <a-box position="0 4.2 2.26" width="1.3" height="1.8" depth="0.1" color="#0f172a"></a-box>
       
       <!-- 2nd Floor Target Window (6.8m Sill Height) -->
@@ -316,38 +242,12 @@
       <a-box position="0 7.8 2.26" width="1.3" height="1.8" depth="0.1" color="#090d16"></a-box>
       <a-text value="TARGET SILL (6.8m) - MIN 3 RUNGS ABOVE" position="0 8.95 2.3" align="center" width="4" color="#f87171" font="monoid"></a-text>
 
-      <!-- 3rd Floor (10.0m) -->
-      <a-box position="0 10.0 2.28" width="4.6" height="0.18" depth="0.2" color="#475569"></a-box>
+      <!-- 3rd Floor Concrete Sill & Window Opening (10.0m) -->
+      <a-box position="0 10.0 2.28" width="4.6" height="0.18" depth="0.2" color="#475569" roughness="0.8"></a-box>
       <a-box position="0 11.0 2.26" width="1.3" height="1.6" depth="0.1" color="#0f172a"></a-box>
 
       <!-- Roof Safety Parapet -->
       <a-box position="0 12.6 2.2" width="4.5" height="0.4" depth="0.15" color="#ef4444"></a-box>
-    </a-entity>
-
-    <!-- ========================================================================
-         OSHKOSH STRIKER ARFF APPLIANCE (./Striker.glb)
-         Positioned at (-11.5, 0, 2.0) on outer left apron well clear of drill tower
-         ======================================================================== -->
-    <a-entity
-      id="fire-appliance"
-      position="-11.5 0 2.0"
-      rotation="0 40 0"
-      striker-loader="src: ./Striker.glb; targetLength: 12.0"
-    >
-      <a-entity class="procedural-fallback">
-        <!-- Fallback 6x6 Striker Hull if Striker.glb is missing -->
-        <a-box position="0 1.85 -0.8" width="3.05" height="2.6" depth="8.8" color="#dc2626" metalness="0.3" roughness="0.4" cast-shadow></a-box>
-        <a-box position="0 1.75 4.3" width="2.95" height="2.4" depth="2.8" color="#b91c1c" metalness="0.3" roughness="0.4" cast-shadow></a-box>
-        <a-plane position="0 2.15 5.71" width="2.6" height="1.05" color="#0f172a" roughness="0.1" metalness="0.9"></a-plane>
-        <a-box position="1.53 1.05 -0.2" width="0.04" height="0.38" depth="10.8" color="#eab308"></a-box>
-        <a-cylinder position="0 3.35 3.2" radius="0.35" height="0.4" color="#1e293b"></a-cylinder>
-        <a-cylinder position="1.45 0.65 4.0" rotation="0 0 90" radius="0.65" height="0.45" color="#1e293b"></a-cylinder>
-        <a-cylinder position="-1.45 0.65 4.0" rotation="0 0 90" radius="0.65" height="0.45" color="#1e293b"></a-cylinder>
-        <a-cylinder position="1.45 0.65 -1.4" rotation="0 0 90" radius="0.65" height="0.45" color="#1e293b"></a-cylinder>
-        <a-cylinder position="-1.45 0.65 -1.4" rotation="0 0 90" radius="0.65" height="0.45" color="#1e293b"></a-cylinder>
-        <a-cylinder position="1.45 0.65 -3.2" rotation="0 0 90" radius="0.65" height="0.45" color="#1e293b"></a-cylinder>
-        <a-cylinder position="-1.45 0.65 -3.2" rotation="0 0 90" radius="0.65" height="0.45" color="#1e293b"></a-cylinder>
-      </a-entity>
     </a-entity>
 
     <!-- ========================================================================

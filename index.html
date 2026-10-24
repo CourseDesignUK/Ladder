@@ -63,8 +63,141 @@
     });
 
     /**
+     * A-FRAME COMPONENT: vr-ray-ui
+     * Performs continuous 3D ray-intersection UV mapping directly on the console plane
+     * and binds individual 3D button collider boxes to WebXR controller triggers, grips,
+     * pinch/select events, and desktop mouse clicks.
+     */
+    AFRAME.registerComponent('vr-ray-ui', {
+      init: function () {
+        this.activeRayEl = null;
+
+        // Button bounding boxes in UV space (u: 0..1 left-to-right, v: 0..1 bottom-to-top)
+        // Canvas is 1440x960. Canvas Y is top-down, UV.y is bottom-up: v = 1 - (y / 960)
+        this.uvButtons = [
+          { idx: 0, uMin: 64 / 1440,  uMax: 696 / 1440,  vMin: 1 - 584 / 960, vMax: 1 - 472 / 960 },
+          { idx: 1, uMin: 744 / 1440, uMax: 1376 / 1440, vMin: 1 - 584 / 960, vMax: 1 - 472 / 960 },
+          { idx: 2, uMin: 64 / 1440,  uMax: 696 / 1440,  vMin: 1 - 736 / 960, vMax: 1 - 624 / 960 },
+          { idx: 3, uMin: 744 / 1440, uMax: 1376 / 1440, vMin: 1 - 736 / 960, vMax: 1 - 624 / 960 },
+          { idx: 4, uMin: 64 / 1440,  uMax: 1376 / 1440, vMin: 1 - 888 / 960, vMax: 1 - 776 / 960 }
+        ];
+
+        this.el.addEventListener('raycaster-intersected', (evt) => {
+          this.activeRayEl = evt.detail.el;
+        });
+
+        this.el.addEventListener('raycaster-intersected-cleared', () => {
+          this.activeRayEl = null;
+          if (window.setVRButtonHover) window.setVRButtonHover(-1);
+        });
+
+        const triggerAction = () => {
+          if (window.currentHoveredBtn !== undefined && window.currentHoveredBtn >= 0) {
+            window.setDrillStage(window.currentHoveredBtn);
+            this.pulseHaptics();
+          }
+        };
+
+        this.el.addEventListener('click', triggerAction);
+        this.el.addEventListener('mousedown', triggerAction);
+        this.el.addEventListener('triggerdown', triggerAction);
+      },
+
+      pulseHaptics: function () {
+        if (!this.activeRayEl) return;
+        const tracked = this.activeRayEl.components['tracked-controls'];
+        if (tracked && tracked.controller && tracked.controller.gamepad && tracked.controller.gamepad.hapticActuators) {
+          const actuator = tracked.controller.gamepad.hapticActuators[0];
+          if (actuator && actuator.pulse) actuator.pulse(0.6, 40);
+        }
+      },
+
+      tick: function () {
+        if (!this.activeRayEl) return;
+        const raycaster = this.activeRayEl.components.raycaster;
+        if (!raycaster) return;
+
+        const intersection = raycaster.getIntersection(this.el);
+        if (!intersection || !intersection.uv) return;
+
+        const u = intersection.uv.x;
+        const v = intersection.uv.y;
+
+        let foundIdx = -1;
+        for (let i = 0; i < this.uvButtons.length; i++) {
+          const b = this.uvButtons[i];
+          if (u >= b.uMin && u <= b.uMax && v >= b.vMin && v <= b.vMax) {
+            foundIdx = b.idx;
+            break;
+          }
+        }
+
+        if (foundIdx !== window.currentHoveredBtn) {
+          window.setVRButtonHover(foundIdx);
+        }
+      }
+    });
+
+    /**
+     * A-FRAME COMPONENT: vr-button-collider
+     * Dedicated 3D physical hitbox for each button to guarantee raycast capture in WebXR.
+     */
+    AFRAME.registerComponent('vr-button-collider', {
+      schema: {
+        stage: { type: 'int', default: 0 }
+      },
+      init: function () {
+        const idx = this.data.stage;
+        const onEnter = () => {
+          window.setVRButtonHover(idx);
+        };
+        const onLeave = () => {
+          if (window.currentHoveredBtn === idx) window.setVRButtonHover(-1);
+        };
+        const onActivate = (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          window.setDrillStage(idx);
+        };
+
+        this.el.addEventListener('mouseenter', onEnter);
+        this.el.addEventListener('raycaster-intersected', onEnter);
+        this.el.addEventListener('mouseleave', onLeave);
+        this.el.addEventListener('raycaster-intersected-cleared', onLeave);
+        this.el.addEventListener('click', onActivate);
+        this.el.addEventListener('mousedown', onActivate);
+        this.el.addEventListener('triggerdown', onActivate);
+      }
+    });
+
+    /**
+     *A-FRAME COMPONENT: xr-ray-Reticle
+     * Positions a 3D laser dot at the exact ray-traced surface hit point on the console.
+     */
+    AFRAME.registerComponent('xr-ray-dot', {
+      schema: {
+        dotSelector: { type: 'string' }
+      },
+      init: function () {
+        this.dotEl = document.querySelector(this.data.dotSelector);
+      },
+      tick: function () {
+        if (!this.dotEl) {
+          this.dotEl = document.querySelector(this.data.dotSelector);
+          if (!this.dotEl) return;
+        }
+        const raycaster = this.el.components.raycaster;
+        if (!raycaster || !raycaster.intersections || raycaster.intersections.length === 0) {
+          this.dotEl.setAttribute('visible', false);
+          return;
+        }
+        const hit = raycaster.intersections[0];
+        this.dotEl.setAttribute('visible', true);
+        this.dotEl.object3D.position.copy(hit.point);
+      }
+    });
+
+    /**
      * High-Resolution 2D Canvas Renderer for the 3D In-Game Console
-     * Matches the Web UI's exact Inter & Monospace fonts, Tailwind colors, and frosted glass aesthetics.
      */
     function roundRectPath(ctx, x, y, w, h, r) {
       ctx.beginPath();
@@ -112,7 +245,7 @@
       const fontSans = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
       const fontMono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
-      // 1. Main Frosted Glass Panel Base (Matches --glass-bg & --glass-border)
+      // 1. Main Frosted Glass Panel Base
       const bgGrad = ctx.createLinearGradient(0, 0, W, H);
       bgGrad.addColorStop(0, 'rgba(30, 41, 59, 0.88)');
       bgGrad.addColorStop(1, 'rgba(15, 23, 42, 0.95)');
@@ -139,7 +272,7 @@
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
       ctx.stroke();
 
-      // Red Glowing Vertical Accent Bar (#dc2626 / #ef4444)
+      // Red Glowing Vertical Accent Bar
       ctx.save();
       ctx.shadowColor = '#ef4444';
       ctx.shadowBlur = 18;
@@ -153,7 +286,7 @@
       ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.fill();
       ctx.font = `600 15px ${fontMono}`;
-      ctx.fillStyle = '#cbd5e1'; // text-slate-300
+      ctx.fillStyle = '#cbd5e1';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText('WEBXR PROTOCOL', 118, 83);
@@ -171,19 +304,16 @@
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
       ctx.stroke();
 
-      // Phase Readout
       ctx.font = `600 15px ${fontMono}`;
-      ctx.fillStyle = '#94a3b8'; // text-slate-400
+      ctx.fillStyle = '#94a3b8';
       ctx.fillText('DRILL PHASE', 822, 84);
       ctx.font = `700 22px ${fontMono}`;
-      ctx.fillStyle = '#22d3ee'; // text-cyan-400
+      ctx.fillStyle = '#22d3ee';
       ctx.fillText(`STAGE ${stageIndex + 1} / 5`, 822, 122);
 
-      // Divider 1
       ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.fillRect(988, 72, 2, 68);
 
-      // Pitch Angle Readout
       ctx.font = `600 15px ${fontMono}`;
       ctx.fillStyle = '#94a3b8';
       ctx.fillText('PITCH ANGLE', 1012, 84);
@@ -191,16 +321,14 @@
       ctx.fillStyle = '#ffffff';
       ctx.fillText(stage.pitchLabel, 1012, 122);
 
-      // Divider 2
       ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.fillRect(1218, 72, 2, 68);
 
-      // Head Height Readout
       ctx.font = `600 15px ${fontMono}`;
       ctx.fillStyle = '#94a3b8';
       ctx.fillText('HEAD HEIGHT', 1240, 84);
       ctx.font = `700 20px ${fontMono}`;
-      ctx.fillStyle = '#fbbf24'; // text-amber-400
+      ctx.fillStyle = '#fbbf24';
       ctx.fillText(stage.heightLabel, 1240, 122);
 
       // 4. Center Content Card: Active Stage Details & Command Badge
@@ -211,13 +339,11 @@
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
       ctx.stroke();
 
-      // Stage Title (#f87171 text-red-400 uppercase)
       ctx.font = `700 26px ${fontSans}`;
       ctx.fillStyle = '#f87171';
       ctx.textAlign = 'left';
       ctx.fillText(stage.title.toUpperCase(), 80, 246);
 
-      // Command Badge (bg-red-500/20 border-red-500/40 text-red-200)
       ctx.font = `600 19px ${fontMono}`;
       const cmdWidth = ctx.measureText(stage.command).width + 36;
       const cmdX = 1360 - cmdWidth;
@@ -227,19 +353,16 @@
       ctx.lineWidth = 2;
       ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
       ctx.stroke();
-      ctx.fillStyle = '#fecaca'; // text-red-200
+      ctx.fillStyle = '#fecaca';
       ctx.textAlign = 'center';
       ctx.fillText(stage.command, cmdX + cmdWidth / 2, 245);
 
-      // Stage Description Paragraph (#cbd5e1 text-slate-300)
       ctx.textAlign = 'left';
       ctx.font = `400 24px ${fontSans}`;
       ctx.fillStyle = '#cbd5e1';
       wrapCanvasText(ctx, stage.desc, 80, 315, 1280, 38);
 
-      // 5. Interactive Stage Buttons (Matching Web UI Pill Styling)
-      // Coordinates synchronized with 3D invisible raycaster hitboxes:
-      // Pixel X = 720 + (localX * 800), Pixel Y = 480 - (localY * 800)
+      // 5. Interactive Stage Buttons
       const btnSpecs = [
         { label: '1. Ground Ladder', x: 64,  y: 472, w: 632, h: 112 },
         { label: '2. Pitch (75°)',   x: 744, y: 472, w: 632, h: 112 },
@@ -256,26 +379,27 @@
         roundRectPath(ctx, b.x, b.y, b.w, b.h, 22);
 
         if (isActive) {
-          ctx.shadowColor = 'rgba(239, 68, 68, 0.45)';
+          ctx.shadowColor = 'rgba(239, 68, 68, 0.55)';
           ctx.shadowBlur = 24;
-          ctx.fillStyle = '#dc2626'; // bg-red-600
+          ctx.fillStyle = '#dc2626';
         } else if (isHovered) {
-          ctx.fillStyle = 'rgba(51, 65, 85, 0.92)'; // hover:bg-slate-700
+          ctx.shadowColor = 'rgba(34, 211, 238, 0.35)';
+          ctx.shadowBlur = 18;
+          ctx.fillStyle = 'rgba(51, 65, 85, 0.95)';
         } else {
-          ctx.fillStyle = 'rgba(30, 41, 59, 0.85)'; // bg-slate-800/80
+          ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
         }
         ctx.fill();
 
-        ctx.lineWidth = 2;
+        ctx.lineWidth = isHovered ? 3 : 2;
         ctx.strokeStyle = isActive
-          ? 'rgba(248, 113, 113, 0.65)'
+          ? 'rgba(248, 113, 113, 0.8)'
           : isHovered
-          ? 'rgba(255, 255, 255, 0.35)'
+          ? '#22d3ee'
           : 'rgba(255, 255, 255, 0.12)';
         ctx.stroke();
         ctx.restore();
 
-        // Button Label
         ctx.font = `600 26px ${fontSans}`;
         ctx.fillStyle = isActive || isHovered ? '#ffffff' : '#cbd5e1';
         ctx.textAlign = 'center';
@@ -283,7 +407,7 @@
         ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
       });
 
-      // Force Three.js CanvasTexture refresh on the 3D display plane
+      // Refresh Three.js CanvasTexture
       const displayEl = document.getElementById('vr-console-surface');
       if (displayEl && displayEl.getObject3D('mesh')) {
         const mat = displayEl.getObject3D('mesh').material;
@@ -364,7 +488,7 @@
   </div>
 
   <!-- ==========================================================================
-       A-FRAME 3D / WEBXR SCENE (Meta Quest 3 Optimized)
+       A-FRAME 3D / WEBXR SCENE (Meta Quest 3 Ray-Tracing Controller Setup)
        ========================================================================== -->
   <a-scene
     id="xr-scene"
@@ -397,27 +521,42 @@
       position="6 14 8"
     ></a-entity>
 
+    <!-- 3D Ray-Intersection Reticle Dots (Visual Feedback on Console Surface) -->
+    <a-sphere id="left-ray-dot" radius="0.014" material="color: #ef4444; shader: flat" visible="false"></a-sphere>
+    <a-sphere id="right-ray-dot" radius="0.014" material="color: #22d3ee; shader: flat" visible="false"></a-sphere>
+
     <!-- ========================================================================
-         PLAYER CAMERA RIG & META QUEST 3 CONTROLLERS
+         PLAYER CAMERA RIG & META QUEST 3 RAY-TRACING CONTROLLERS
+         Supports:
+         1. Desktop Mouse Raycasting
+         2. VR Headset Gaze/Fuse Fallback
+         3. Left & Right Quest 3 Touch Controllers + Hand Tracking Pinch Rays
          ======================================================================== -->
     <a-entity id="camera-rig" position="0 0 4.5" rotation="0 0 0">
       <a-camera id="main-camera" position="0 1.65 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
+        <!-- Desktop Mouse Raycaster -->
         <a-entity
           cursor="fuse: false; rayOrigin: mouse"
-          raycaster="objects: .interactable"
+          raycaster="objects: .interactable; far: 25"
         ></a-entity>
       </a-camera>
 
+      <!-- Left VR Controller (Red Laser Ray + Trigger/Grip/Pinch Support) -->
       <a-entity
         id="left-hand"
         laser-controls="hand: left"
-        raycaster="objects: .interactable; far: 15; lineColor: #ef4444; lineOpacity: 0.85"
+        cursor="fuse: false; downEvents: triggerdown, gripdown, selectstart; upEvents: triggerup, gripup, selectend"
+        raycaster="objects: .interactable; far: 20; showLine: true; lineColor: #ef4444; lineOpacity: 0.9"
+        xr-ray-dot="dotSelector: #left-ray-dot"
       ></a-entity>
 
+      <!-- Right VR Controller (Cyan Laser Ray + Trigger/Grip/Pinch Support) -->
       <a-entity
         id="right-hand"
         laser-controls="hand: right"
-        raycaster="objects: .interactable; far: 15; lineColor: #06b6d4; lineOpacity: 0.85"
+        cursor="fuse: false; downEvents: triggerdown, gripdown, selectstart; upEvents: triggerup, gripup, selectend"
+        raycaster="objects: .interactable; far: 20; showLine: true; lineColor: #22d3ee; lineOpacity: 0.9"
+        xr-ray-dot="dotSelector: #right-ray-dot"
       ></a-entity>
     </a-entity>
 
@@ -425,7 +564,6 @@
          DRILL YARD ENVIRONMENT (Concrete Ground & Perimeter Brick Wall)
          ======================================================================== -->
     <a-entity id="drill-yard">
-      <!-- Concrete Ground Plane -->
       <a-plane
         position="0 0 0"
         rotation="-90 0 0"
@@ -461,8 +599,6 @@
          4-STOREY TRAINING DRILL TOWER (Segmented Masonry with True 3D Recessed Windows)
          ======================================================================== -->
     <a-entity id="drill-tower" position="0 0 -6.25">
-      
-      <!-- 1. Rear & Core Tower Mass -->
       <a-box
         position="0 6.25 -0.325"
         width="4.5"
@@ -473,7 +609,6 @@
         receive-shadow
       ></a-box>
 
-      <!-- 2. Front Left Masonry Pier -->
       <a-box
         position="-1.45 6.25 1.925"
         width="1.6"
@@ -484,7 +619,6 @@
         receive-shadow
       ></a-box>
 
-      <!-- 3. Front Right Masonry Pier -->
       <a-box
         position="1.45 6.25 1.925"
         width="1.6"
@@ -495,7 +629,6 @@
         receive-shadow
       ></a-box>
 
-      <!-- 4. Center Masonry Spandrel: Ground to 1st Floor Sill -->
       <a-box
         position="0 1.6 1.925"
         width="1.3"
@@ -506,7 +639,6 @@
         receive-shadow
       ></a-box>
 
-      <!-- 5. Center Masonry Spandrel: 1st Floor Header to 2nd Floor Sill -->
       <a-box
         position="0 5.9 1.925"
         width="1.3"
@@ -517,7 +649,6 @@
         receive-shadow
       ></a-box>
 
-      <!-- 6. Center Masonry Spandrel: 2nd Floor Header to 3rd Floor Sill -->
       <a-box
         position="0 9.3 1.925"
         width="1.3"
@@ -528,7 +659,6 @@
         receive-shadow
       ></a-box>
 
-      <!-- 7. Center Masonry Spandrel: 3rd Floor Header to Roof -->
       <a-box
         position="0 12.05 1.925"
         width="1.3"
@@ -539,14 +669,14 @@
         receive-shadow
       ></a-box>
 
-      <!-- 1st Floor Recessed Window Trim & Interior Cavity -->
+      <!-- 1st Floor Recessed Window -->
       <a-plane position="0 4.1 1.62" width="1.28" height="1.78" color="#050811" roughness="0.9"></a-plane>
       <a-box position="-0.63 4.1 1.92" width="0.04" height="1.8" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
       <a-box position="0.63 4.1 1.92" width="0.04" height="1.8" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
       <a-box position="0 3.16 2.0" width="1.5" height="0.14" depth="0.72" color="#475569" roughness="0.8" cast-shadow receive-shadow></a-box>
       <a-box position="0 5.06 2.0" width="1.5" height="0.14" depth="0.72" color="#334155" roughness="0.8" cast-shadow></a-box>
 
-      <!-- 2nd Floor Target Recessed Window (6.8m Climb Target) -->
+      <!-- 2nd Floor Target Recessed Window -->
       <a-plane position="0 7.7 1.62" width="1.28" height="1.78" color="#050811" roughness="0.9"></a-plane>
       <a-box position="-0.63 7.7 1.92" width="0.04" height="1.8" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
       <a-box position="0.63 7.7 1.92" width="0.04" height="1.8" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
@@ -554,7 +684,7 @@
       <a-box position="0 8.66 2.0" width="1.5" height="0.14" depth="0.72" color="#334155" roughness="0.8" cast-shadow></a-box>
       <a-text value="TARGET SILL (6.8m) - MIN 3 RUNGS ABOVE" position="0 8.95 2.3" align="center" width="3.6" wrap-count="45" color="#f87171" font="monoid"></a-text>
 
-      <!-- 3rd Floor Recessed Window Trim & Interior Cavity -->
+      <!-- 3rd Floor Recessed Window -->
       <a-plane position="0 10.8 1.62" width="1.28" height="1.58" color="#050811" roughness="0.9"></a-plane>
       <a-box position="-0.63 10.8 1.92" width="0.04" height="1.6" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
       <a-box position="0.63 10.8 1.92" width="0.04" height="1.6" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
@@ -587,11 +717,11 @@
     </a-entity>
 
     <!-- ========================================================================
-         IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (Identical Web UI Font & Coloring)
+         IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (Dual Ray-Traced UV + 3D Box Colliders)
          ======================================================================== -->
-    <a-entity id="vr-control-console" position="2.3 1.25 1.8" rotation="0 -35 0">
+    <a-entity id="vr-control-console" position="2.1 1.25 1.8" rotation="0 -35 0">
       
-      <!-- Subtle 3D Frosted Glass Volume Behind Canvas Surface -->
+      <!-- 3D Frosted Glass Backing Volume -->
       <a-box
         position="0 0 -0.015"
         width="1.82"
@@ -600,70 +730,67 @@
         material="color: #0f172a; opacity: 0.45; transparent: true; roughness: 0.15; metalness: 0.6"
       ></a-box>
 
-      <!-- High-Resolution 2D Canvas Surface Matching Web UI Typography & Colors -->
+      <!-- Ray-Traced High-Resolution 2D Canvas Surface -->
       <a-plane
         id="vr-console-surface"
+        class="interactable"
+        vr-ray-ui
         position="0 0 0"
         width="1.80"
         height="1.20"
         material="src: #vr-ui-canvas; transparent: true; shader: flat"
       ></a-plane>
 
-      <!-- Invisible 3D Raycaster Hit-Targets Mapped 1:1 to Canvas Button Coordinates -->
-      <a-plane
+      <!-- Dedicated 3D Raycast Box Colliders for Each Button -->
+      <a-box
         class="interactable"
-        position="-0.425 -0.06 0.01"
+        vr-button-collider="stage: 0"
+        position="-0.425 -0.06 0.012"
         width="0.79"
         height="0.14"
-        material="opacity: 0; transparent: true"
-        onclick="setDrillStage(0)"
-        onmouseenter="setVRButtonHover(0)"
-        onmouseleave="setVRButtonHover(-1)"
-      ></a-plane>
+        depth="0.02"
+        material="opacity: 0.001; transparent: true; depthWrite: false"
+      ></a-box>
 
-      <a-plane
+      <a-box
         class="interactable"
-        position="0.425 -0.06 0.01"
+        vr-button-collider="stage: 1"
+        position="0.425 -0.06 0.012"
         width="0.79"
         height="0.14"
-        material="opacity: 0; transparent: true"
-        onclick="setDrillStage(1)"
-        onmouseenter="setVRButtonHover(1)"
-        onmouseleave="setVRButtonHover(-1)"
-      ></a-plane>
+        depth="0.02"
+        material="opacity: 0.001; transparent: true; depthWrite: false"
+      ></a-box>
 
-      <a-plane
+      <a-box
         class="interactable"
-        position="-0.425 -0.25 0.01"
+        vr-button-collider="stage: 2"
+        position="-0.425 -0.25 0.012"
         width="0.79"
         height="0.14"
-        material="opacity: 0; transparent: true"
-        onclick="setDrillStage(2)"
-        onmouseenter="setVRButtonHover(2)"
-        onmouseleave="setVRButtonHover(-1)"
-      ></a-plane>
+        depth="0.02"
+        material="opacity: 0.001; transparent: true; depthWrite: false"
+      ></a-box>
 
-      <a-plane
+      <a-box
         class="interactable"
-        position="0.425 -0.25 0.01"
+        vr-button-collider="stage: 3"
+        position="0.425 -0.25 0.012"
         width="0.79"
         height="0.14"
-        material="opacity: 0; transparent: true"
-        onclick="setDrillStage(3)"
-        onmouseenter="setVRButtonHover(3)"
-        onmouseleave="setVRButtonHover(-1)"
-      ></a-plane>
+        depth="0.02"
+        material="opacity: 0.001; transparent: true; depthWrite: false"
+      ></a-box>
 
-      <a-plane
+      <a-box
         class="interactable"
-        position="0 -0.44 0.01"
+        vr-button-collider="stage: 4"
+        position="0 -0.44 0.012"
         width="1.64"
         height="0.14"
-        material="opacity: 0; transparent: true"
-        onclick="setDrillStage(4)"
-        onmouseenter="setVRButtonHover(4)"
-        onmouseleave="setVRButtonHover(-1)"
-      ></a-plane>
+        depth="0.02"
+        material="opacity: 0.001; transparent: true; depthWrite: false"
+      ></a-box>
     </a-entity>
 
   </a-scene>
@@ -681,7 +808,8 @@
         flyExtensionY: 0.15,
         pitchLabel: '2.0° (GROUNDED)',
         heightLabel: '5.5m (HOUSED)',
-        rigPos: '0 0 4.5'
+        rigPos: '0 0 4.5',
+        consolePos: '2.1 1.25 1.8'
       },
       {
         title: 'Stage 2: Under-Running & Pitching to 75° (4:1 Ratio)',
@@ -691,7 +819,8 @@
         flyExtensionY: 0.15,
         pitchLabel: '75.0° (4:1 OPTIMAL)',
         heightLabel: '5.3m (BASE)',
-        rigPos: '0 0 4.5'
+        rigPos: '0 0 4.5',
+        consolePos: '2.1 1.25 1.8'
       },
       {
         title: 'Stage 3: Extending Fly, Engaging Pawls & Head Bedding',
@@ -701,7 +830,8 @@
         flyExtensionY: 3.1,
         pitchLabel: '75.0° (PAWLS LOCKED)',
         heightLabel: '8.4m (3 RUNGS OVER)',
-        rigPos: '0 0 4.5'
+        rigPos: '0 0 4.5',
+        consolePos: '2.1 1.25 1.8'
       },
       {
         title: 'Stage 4: Bracing (Footing) & Tactical Ascent to Sill',
@@ -711,7 +841,8 @@
         flyExtensionY: 3.1,
         pitchLabel: '75.0° (FOOTED)',
         heightLabel: '8.4m (AT SILL POV)',
-        rigPos: '0 5.4 -3.1'
+        rigPos: '0 5.4 -3.1',
+        consolePos: '1.65 6.65 -4.3' // Follows climber up to 2nd floor window so buttons remain operable in VR
       },
       {
         title: 'Stage 5: Descent, Disengaging Pawls & Making Up',
@@ -721,22 +852,23 @@
         flyExtensionY: 0.15,
         pitchLabel: '2.0° (MADE UP)',
         heightLabel: '5.5m (HOUSED)',
-        rigPos: '0 0 4.5'
+        rigPos: '0 0 4.5',
+        consolePos: '2.1 1.25 1.8'
       }
     ];
 
-    let currentDrillStage = 0;
-    let currentHoveredBtn = -1;
+    window.currentDrillStage = 0;
+    window.currentHoveredBtn = -1;
 
-    function setVRButtonHover(btnIndex) {
-      currentHoveredBtn = btnIndex;
-      updateVRConsoleCanvas(currentDrillStage, currentHoveredBtn);
-    }
+    window.setVRButtonHover = function (btnIndex) {
+      window.currentHoveredBtn = btnIndex;
+      updateVRConsoleCanvas(window.currentDrillStage, window.currentHoveredBtn);
+    };
 
-    function setDrillStage(index) {
+    window.setDrillStage = function (index) {
       const stage = window.NFCC_DRILL_STAGES[index];
       if (!stage) return;
-      currentDrillStage = index;
+      window.currentDrillStage = index;
 
       // Update 2D Frosted HUD
       document.getElementById('hud-phase-num').textContent = `STAGE ${index + 1} / 5`;
@@ -755,8 +887,8 @@
         }
       });
 
-      // Redraw 3D In-Game Console Canvas to Match Web UI State
-      updateVRConsoleCanvas(currentDrillStage, currentHoveredBtn);
+      // Redraw 3D In-Game Console Canvas
+      updateVRConsoleCanvas(window.currentDrillStage, window.currentHoveredBtn);
 
       // Animate Ladder Heel Pivot
       const heelPivot = document.getElementById('ladder-heel-pivot');
@@ -784,28 +916,44 @@
         dur: 2200,
         easing: 'easeInOutCubic'
       });
-    }
 
-    function resetCameraPov() {
+      // Keep 3D VR Console within controller ray range during climb
+      const vrConsole = document.getElementById('vr-control-console');
+      if (vrConsole && stage.consolePos) {
+        vrConsole.setAttribute('animation__follow', {
+          property: 'position',
+          to: stage.consolePos,
+          dur: 2200,
+          easing: 'easeInOutCubic'
+        });
+      }
+    };
+
+    window.resetCameraPov = function () {
       const cameraRig = document.getElementById('camera-rig');
       cameraRig.removeAttribute('animation__climb');
       cameraRig.setAttribute('position', '0 0 4.5');
-    }
 
-    function enterQuestVR() {
+      const vrConsole = document.getElementById('vr-control-console');
+      if (vrConsole) {
+        vrConsole.removeAttribute('animation__follow');
+        vrConsole.setAttribute('position', '2.1 1.25 1.8');
+      }
+    };
+
+    window.enterQuestVR = function () {
       const sceneEl = document.getElementById('xr-scene');
       if (sceneEl && sceneEl.enterVR) {
         sceneEl.enterVR();
       }
-    }
+    };
 
-    // Initialize 3D Canvas Texture on Scene Load
     window.addEventListener('DOMContentLoaded', () => {
       updateVRConsoleCanvas(0, -1);
       const sceneEl = document.getElementById('xr-scene');
       if (sceneEl) {
         sceneEl.addEventListener('loaded', () => {
-          updateVRConsoleCanvas(currentDrillStage, currentHoveredBtn);
+          updateVRConsoleCanvas(window.currentDrillStage, window.currentHoveredBtn);
         });
       }
     });

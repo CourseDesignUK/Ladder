@@ -4,14 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NFCC Ladder Drill Simulator (WebXR)</title>
-  <!-- Tailwind CSS for 2D Glassmorphism HUD -->
+  <!-- Tailwind CSS for 2D Frosted Glass HUD -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- A-Frame 1.6.0 (WebXR / Meta Quest 3 Optimized) -->
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <style>
     :root {
-      --bg-glass: rgba(15, 23, 42, 0.82);
-      --border-glass: rgba(255, 255, 255, 0.12);
+      --glass-bg: linear-gradient(135deg, rgba(30, 41, 59, 0.72) 0%, rgba(15, 23, 42, 0.88) 100%);
+      --glass-border: rgba(255, 255, 255, 0.16);
+      --glass-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.12);
       --accent-red: #ef4444;
       --accent-amber: #f59e0b;
       --accent-cyan: #06b6d4;
@@ -24,12 +25,12 @@
       color: #f8fafc;
       user-select: none;
     }
-    .glass-panel {
-      background: var(--bg-glass);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--border-glass);
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    .frosted-glass {
+      background: var(--glass-bg);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--glass-shadow);
     }
     .a-enter-vr {
       display: none !important;
@@ -68,66 +69,66 @@
 
 <body>
   <!-- ==========================================================================
-       2D GLASSMORPHISM OVERLAY HUD (Desktop / Mobile / Pre-VR Configuration)
+       2D FROSTED GLASS OVERLAY HUD (Desktop / Mobile / Pre-VR Configuration)
        ========================================================================== -->
-  <div id="hud-overlay" class="fixed inset-0 pointer-events-none z-50 flex flex-col justify-between p-4 md:p-6">
+  <div id="hud-overlay" class="fixed inset-0 pointer-events-none z-50 flex flex-col justify-between p-4 md:p-6 overflow-hidden">
     
     <!-- Top Bar: Brand Identity & Telemetry -->
-    <header class="flex flex-wrap items-center justify-between gap-4 pointer-events-auto">
-      <div class="glass-panel px-4 py-3 rounded-xl flex items-center gap-4">
-        <div class="w-3 h-8 bg-red-600 rounded-sm shadow-[0_0_12px_#ef4444]"></div>
-        <div>
+    <header class="flex flex-wrap items-center justify-between gap-3 pointer-events-auto w-full max-w-7xl mx-auto">
+      <div class="frosted-glass px-4 py-3 rounded-2xl flex items-center gap-3.5 max-w-md">
+        <div class="w-2.5 h-7 bg-red-600 rounded-sm shadow-[0_0_12px_#ef4444] shrink-0"></div>
+        <div class="min-w-0">
           <div class="flex items-center gap-2">
-            <span class="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-slate-300">WEBXR</span>
+            <span class="text-[9px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-slate-300 tracking-wider">WEBXR PROTOCOL</span>
           </div>
-          <h1 class="text-base md:text-lg font-bold tracking-tight text-white">NFCC Standard Drill: 13.5m / 10.5m Extension Ladder</h1>
+          <h1 class="text-xs md:text-sm font-bold tracking-tight text-white truncate">NFCC Standard Drill: 13.5m / 10.5m Extension Ladder</h1>
         </div>
       </div>
 
       <!-- Live Telemetry Readout -->
-      <div class="glass-panel px-4 py-2.5 rounded-xl flex items-center gap-5 font-mono text-xs">
+      <div class="frosted-glass px-4 py-2.5 rounded-2xl flex items-center gap-4 md:gap-5 font-mono text-xs shrink-0">
         <div>
-          <span class="text-slate-400 block text-[10px]">DRILL PHASE</span>
+          <span class="text-slate-400 block text-[9px] tracking-wider">DRILL PHASE</span>
           <span id="hud-phase-num" class="text-cyan-400 font-bold">STAGE 1 / 5</span>
         </div>
         <div class="h-6 w-px bg-white/10"></div>
         <div>
-          <span class="text-slate-400 block text-[10px]">PITCH ANGLE</span>
+          <span class="text-slate-400 block text-[9px] tracking-wider">PITCH ANGLE</span>
           <span id="hud-pitch-val" class="text-white font-bold">2.0° (GROUNDED)</span>
         </div>
         <div class="h-6 w-px bg-white/10"></div>
         <div>
-          <span class="text-slate-400 block text-[10px]">HEAD HEIGHT</span>
+          <span class="text-slate-400 block text-[9px] tracking-wider">HEAD HEIGHT</span>
           <span id="hud-height-val" class="text-amber-400 font-bold">5.5m (HOUSED)</span>
         </div>
       </div>
     </header>
 
     <!-- Bottom Bar: NFCC Drill Step Controls & Enter VR -->
-    <footer class="flex flex-wrap items-end justify-between gap-4 pointer-events-auto">
-      <div class="glass-panel p-4 rounded-2xl max-w-2xl flex-1">
-        <div class="flex items-center justify-between mb-1">
-          <span id="hud-stage-title" class="text-sm font-bold text-red-400 uppercase tracking-wide">Stage 1: Pre-Pitch Hazard Assessment & Carry</span>
-          <span id="hud-command-badge" class="text-[11px] font-mono bg-red-500/20 border border-red-500/40 text-red-200 px-2 py-0.5 rounded">CMD: "GROUND LADDER"</span>
+    <footer class="flex flex-wrap items-end justify-between gap-3 pointer-events-auto w-full max-w-7xl mx-auto">
+      <div class="frosted-glass p-4 rounded-2xl max-w-xl flex-1 min-w-[300px]">
+        <div class="flex items-center justify-between gap-2 mb-1.5">
+          <span id="hud-stage-title" class="text-xs md:text-sm font-bold text-red-400 uppercase tracking-wide truncate">Stage 1: Pre-Pitch Hazard Assessment & Grounding</span>
+          <span id="hud-command-badge" class="text-[10px] font-mono bg-red-500/20 border border-red-500/40 text-red-200 px-2 py-0.5 rounded shrink-0">CMD: "GROUND LADDER"</span>
         </div>
-        <p id="hud-stage-desc" class="text-xs text-slate-300 leading-relaxed mb-3">
+        <p id="hud-stage-desc" class="text-[11px] md:text-xs text-slate-300 leading-relaxed mb-3 line-clamp-2">
           Inspect overhead cables and ground stability. Crew carries ladder horizontally at shoulder height and grounds heel 2.2m from drill tower face.
         </p>
-        <div class="flex flex-wrap items-center gap-2">
-          <button onclick="setDrillStage(0)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 text-white transition">1. Ground</button>
-          <button onclick="setDrillStage(1)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">2. Pitch (75°)</button>
-          <button onclick="setDrillStage(2)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">3. Extend & Pawls</button>
-          <button onclick="setDrillStage(3)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">4. Foot & Climb</button>
-          <button onclick="setDrillStage(4)" class="stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">5. Make Up</button>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button onclick="setDrillStage(0)" class="stage-btn px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-red-600 text-white transition shadow-sm">1. Ground</button>
+          <button onclick="setDrillStage(1)" class="stage-btn px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition">2. Pitch (75°)</button>
+          <button onclick="setDrillStage(2)" class="stage-btn px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition">3. Extend & Pawls</button>
+          <button onclick="setDrillStage(3)" class="stage-btn px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition">4. Foot & Climb</button>
+          <button onclick="setDrillStage(4)" class="stage-btn px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition">5. Make Up</button>
         </div>
       </div>
 
       <!-- Camera POV & Meta Quest 3 VR Launch -->
-      <div class="flex items-center gap-3">
-        <button onclick="resetCameraPov()" class="glass-panel px-4 py-3.5 rounded-2xl text-xs font-semibold text-slate-200 hover:border-white/30 transition">
+      <div class="flex items-center gap-2.5 shrink-0">
+        <button onclick="resetCameraPov()" class="frosted-glass px-4 py-3.5 rounded-2xl text-xs font-semibold text-slate-200 hover:border-white/30 transition">
           Reset Yard POV
         </button>
-        <button onclick="enterQuestVR()" class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-sm shadow-[0_0_25px_rgba(239,68,68,0.5)] border border-red-400/30 transition">
+        <button onclick="enterQuestVR()" class="px-5 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs md:text-sm shadow-[0_0_25px_rgba(239,68,68,0.5)] border border-red-400/30 transition">
           ENTER QUEST 3 VR
         </button>
       </div>
@@ -172,21 +173,18 @@
          ======================================================================== -->
     <a-entity id="camera-rig" position="0 0 4.5" rotation="0 0 0">
       <a-camera id="main-camera" position="0 1.65 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
-        <!-- Center Reticle for Non-VR Desktop Click -->
         <a-entity
           cursor="fuse: false; rayOrigin: mouse"
           raycaster="objects: .interactable"
         ></a-entity>
       </a-camera>
 
-      <!-- Left Quest 3 Controller -->
       <a-entity
         id="left-hand"
         laser-controls="hand: left"
         raycaster="objects: .interactable; far: 15; lineColor: #ef4444; lineOpacity: 0.85"
       ></a-entity>
 
-      <!-- Right Quest 3 Controller -->
       <a-entity
         id="right-hand"
         laser-controls="hand: right"
@@ -198,7 +196,7 @@
          DRILL YARD ENVIRONMENT (Concrete Ground & Perimeter Brick Wall)
          ======================================================================== -->
     <a-entity id="drill-yard">
-      <!-- Concrete Ground Plane (textured with concrete.jpg) -->
+      <!-- Concrete Ground Plane -->
       <a-plane
         position="0 0 0"
         rotation="-90 0 0"
@@ -207,21 +205,16 @@
         material="src: #concrete-tex; repeat: 30 30; roughness: 0.85; metalness: 0.05"
         receive-shadow
       ></a-plane>
-
-      <!-- Tactical Grid Overlay -->
+      
       <a-grid width="60" height="60" cell-size="1" cell-color="#1e293b" section-size="5" section-color="#334155" position="0 0.01 0"></a-grid>
 
-      <!-- Perimeter Brick Wall (Enclosing the 30x30 Yard Area) -->
-      <!-- North Wall (Behind Tower) -->
+      <!-- Perimeter Brick Wall -->
       <a-box position="0 1.5 -25" width="50" height="3" depth="0.8" material="src: #brick-tex; repeat: 12 1; roughness: 0.9" cast-shadow receive-shadow></a-box>
-      <!-- South Wall (Behind Player) -->
       <a-box position="0 1.5 25" width="50" height="3" depth="0.8" material="src: #brick-tex; repeat: 12 1; roughness: 0.9" cast-shadow receive-shadow></a-box>
-      <!-- East Wall -->
       <a-box position="25 1.5 0" width="0.8" height="3" depth="50" material="src: #brick-tex; repeat: 12 1; roughness: 0.9" cast-shadow receive-shadow></a-box>
-      <!-- West Wall -->
       <a-box position="-25 1.5 0" width="0.8" height="3" depth="50" material="src: #brick-tex; repeat: 12 1; roughness: 0.9" cast-shadow receive-shadow></a-box>
 
-      <!-- NFCC 4:1 Safe Pitch Zone Indicator (2.2m out from tower face at Z = -1.8) -->
+      <!-- NFCC 4:1 Safe Pitch Zone Indicator -->
       <a-plane position="0 0.02 -1.8" rotation="-90 0 0" width="1.6" height="0.6" color="#f59e0b" opacity="0.25"></a-plane>
       <a-ring position="0 0.025 -1.8" rotation="-90 0 0" radius-inner="0.32" radius-outer="0.38" color="#f59e0b"></a-ring>
       <a-text
@@ -239,7 +232,6 @@
          4-STOREY TRAINING DRILL TOWER (3D Recessed Windows & Brick Walls)
          ======================================================================== -->
     <a-entity id="drill-tower" position="0 0 -6.25">
-      <!-- Main Brick Structure (Depth 4.5m -> front face sits at Z = -4.0) -->
       <a-box
         position="0 6.25 0"
         width="4.5"
@@ -250,41 +242,23 @@
         receive-shadow
       ></a-box>
       
-      <!-- ====================================================================
-           1ST FLOOR RECESS WINDOW (Sill at Y = 3.2, Z = 2.25)
-           ==================================================================== -->
-      <!-- Concrete Sill -->
+      <!-- 1st Floor Recess Window -->
       <a-box position="0 3.2 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <!-- Lintel / Header -->
       <a-box position="0 5.1 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <!-- Recessed Window Cavity (3D Depth Box) -->
       <a-box position="0 4.15 2.12" width="1.3" height="1.8" depth="0.35" color="#0f172a" roughness="0.9" receive-shadow></a-box>
-      <!-- Inner Back Wall of 1st Floor Window -->
       <a-box position="0 4.15 1.96" width="1.26" height="1.76" depth="0.05" color="#1e293b"></a-box>
 
-      <!-- ====================================================================
-           2ND FLOOR TARGET WINDOW (Sill at Y = 6.8, Z = 2.25)
-           ==================================================================== -->
-      <!-- Red Safety Sill & Badge -->
+      <!-- 2nd Floor Target Window -->
       <a-box position="0 6.8 2.28" width="1.7" height="0.22" depth="0.35" color="#ef4444" roughness="0.7" cast-shadow></a-box>
-      <!-- Lintel / Header -->
       <a-box position="0 8.7 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <!-- Recessed Window Cavity (3D Depth Box) -->
       <a-box position="0 7.75 2.12" width="1.3" height="1.8" depth="0.35" color="#090d16" roughness="0.9" receive-shadow></a-box>
-      <!-- Inner Back Wall of 2nd Floor Window -->
       <a-box position="0 7.75 1.96" width="1.26" height="1.76" depth="0.05" color="#111827"></a-box>
-      <a-text value="TARGET SILL (6.8m) - MIN 3 RUNGS ABOVE" position="0 8.95 2.3" align="center" width="4" color="#f87171" font="monoid"></a-text>
+      <a-text value="TARGET SILL (6.8m) - MIN 3 RUNGS ABOVE" position="0 8.95 2.3" align="center" width="3.6" wrap-count="45" color="#f87171" font="monoid"></a-text>
 
-      <!-- ====================================================================
-           3RD FLOOR RECESS WINDOW (Sill at Y = 10.0, Z = 2.25)
-           ==================================================================== -->
-      <!-- Concrete Sill -->
+      <!-- 3rd Floor Recess Window -->
       <a-box position="0 10.0 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <!-- Lintel / Header -->
       <a-box position="0 11.8 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <!-- Recessed Window Cavity (3D Depth Box) -->
       <a-box position="0 10.9 2.12" width="1.3" height="1.6" depth="0.35" color="#0f172a" roughness="0.9" receive-shadow></a-box>
-      <!-- Inner Back Wall of 3rd Floor Window -->
       <a-box position="0 10.9 1.96" width="1.26" height="1.56" depth="0.05" color="#1e293b"></a-box>
 
       <!-- Roof Safety Parapet -->
@@ -292,56 +266,44 @@
     </a-entity>
 
     <!-- ========================================================================
-         ARTICULATED LADDER RIG (Heel Pivot at 0, 0.05, -1.8)
+         ARTICULATED LADDER RIG
          ======================================================================== -->
     <a-entity id="ladder-heel-pivot" position="0 0.05 -1.8" rotation="-88 0 0">
-      
-      <!-- LADDER MAIN BASE SECTION -->
       <a-entity id="ladder-base" position="0 0 0">
-        <!-- Left & Right Aluminium Strings -->
         <a-box position="-0.25 2.75 0" width="0.045" height="5.5" depth="0.18" color="#e2e8f0" metalness="0.75" roughness="0.25" cast-shadow></a-box>
         <a-box position="0.25 2.75 0" width="0.045" height="5.5" depth="0.18" color="#e2e8f0" metalness="0.75" roughness="0.25" cast-shadow></a-box>
-        <!-- Rubber Heel Blocks -->
         <a-box position="-0.25 0.08 0" width="0.07" height="0.16" depth="0.22" color="#ef4444"></a-box>
         <a-box position="0.25 0.08 0" width="0.07" height="0.16" depth="0.22" color="#ef4444"></a-box>
-        <!-- Procedural Rungs -->
         <a-entity procedural-ladder-rungs="count: 16; spacing: 0.32; width: 0.5"></a-entity>
       </a-entity>
 
-      <!-- LADDER EXTENDING FLY SECTION (Slides along Local Y) -->
       <a-entity id="ladder-fly-carriage" position="0 0.15 -0.08">
-        <!-- Inner Fly Strings -->
         <a-box position="-0.21 2.75 0" width="0.04" height="5.5" depth="0.15" color="#f8fafc" metalness="0.8" roughness="0.2" cast-shadow></a-box>
         <a-box position="0.21 2.75 0" width="0.04" height="5.5" depth="0.15" color="#f8fafc" metalness="0.8" roughness="0.2" cast-shadow></a-box>
-        <!-- High-Visibility Red Head Rounds -->
         <a-cylinder position="-0.21 5.45 0.08" rotation="0 0 90" radius="0.07" height="0.08" color="#ef4444"></a-cylinder>
         <a-cylinder position="0.21 5.45 0.08" rotation="0 0 90" radius="0.07" height="0.08" color="#ef4444"></a-cylinder>
-        <!-- Procedural Fly Rungs -->
         <a-entity procedural-ladder-rungs="count: 16; spacing: 0.32; width: 0.42; color: #f1f5f9"></a-entity>
       </a-entity>
-
     </a-entity>
 
     <!-- ========================================================================
-         IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (For Quest 3 Controllers)
+         IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (Frosted Glass Style & Safe Text Wrapping)
          ======================================================================== -->
     <a-entity id="vr-control-console" position="2.3 1.25 1.8" rotation="0 -35 0">
-      <!-- Console Backing Frame -->
-      <a-box position="0 0 -0.04" width="1.75" height="1.15" depth="0.05" color="#0f172a" metalness="0.5" roughness="0.4"></a-box>
-      <a-plane position="0 0 -0.01" width="1.7" height="1.1" color="#1e293b"></a-plane>
-      <!-- Red Header Accent -->
-      <a-plane position="0 0.46 0.005" width="1.62" height="0.11" color="#dc2626"></a-plane>
-      <a-text value="CONSOLE" position="0 0.46 0.01" align="center" width="2.2" color="#ffffff" font="monoid"></a-text>
+      <a-box position="0 0 -0.04" width="1.8" height="1.2" depth="0.05" color="#0f172a" metalness="0.4" roughness="0.5"></a-box>
+      <a-plane position="0 0 -0.01" width="1.75" height="1.15" material="color: #1e293b; opacity: 0.85; transparent: true"></a-plane>
+      <a-plane position="0 0.48 0.005" width="1.66" height="0.12" color="#dc2626"></a-plane>
+      <a-text value="CONSOLE PROTOCOL" position="0 0.48 0.01" align="center" width="2.2" wrap-count="24" color="#ffffff" font="monoid"></a-text>
 
-      <!-- Live 3D Stage Readout -->
-      <a-text id="vr-console-title" value="STAGE 1: GROUND LADDER" position="0 0.31 0.01" align="center" width="2.1" color="#38bdf8" font="monoid"></a-text>
-      <a-text id="vr-console-telemetry" value="PITCH: 2.0 DEG | EXTENSION: 5.5m" position="0 0.21 0.01" align="center" width="1.8" color="#fbbf24" font="monoid"></a-text>
+      <!-- Live 3D Stage Readout with Controlled Wrap -->
+      <a-text id="vr-console-title" value="STAGE 1: GROUND LADDER" position="0 0.32 0.01" align="center" width="1.6" wrap-count="32" color="#38bdf8" font="monoid"></a-text>
+      <a-text id="vr-console-telemetry" value="PITCH: 2.0 DEG | EXTENSION: 5.5m" position="0 0.22 0.01" align="center" width="1.6" wrap-count="38" color="#fbbf24" font="monoid"></a-text>
 
       <!-- 3D Interactive Stage Buttons -->
       <a-box
         class="interactable"
-        position="-0.48 0.04 0.02"
-        width="0.72"
+        position="-0.45 0.04 0.02"
+        width="0.78"
         height="0.14"
         depth="0.03"
         color="#334155"
@@ -349,13 +311,13 @@
         animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="1. GROUND LADDER" position="0 0 0.02" align="center" width="1.6" color="#ffffff"></a-text>
+        <a-text value="1. GROUND" position="0 0 0.02" align="center" width="1.5" wrap-count="16" color="#ffffff"></a-text>
       </a-box>
 
       <a-box
         class="interactable"
-        position="0.48 0.04 0.02"
-        width="0.72"
+        position="0.45 0.04 0.02"
+        width="0.78"
         height="0.14"
         depth="0.03"
         color="#334155"
@@ -363,13 +325,13 @@
         animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="2. PITCH TO 75 DEG" position="0 0 0.02" align="center" width="1.6" color="#ffffff"></a-text>
+        <a-text value="2. PITCH 75°" position="0 0 0.02" align="center" width="1.5" wrap-count="16" color="#ffffff"></a-text>
       </a-box>
 
       <a-box
         class="interactable"
-        position="-0.48 -0.15 0.02"
-        width="0.72"
+        position="-0.45 -0.15 0.02"
+        width="0.78"
         height="0.14"
         depth="0.03"
         color="#334155"
@@ -377,13 +339,13 @@
         animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="3. EXTEND & LOCK PAWLS" position="0 0 0.02" align="center" width="1.6" color="#ffffff"></a-text>
+        <a-text value="3. EXTEND" position="0 0 0.02" align="center" width="1.5" wrap-count="16" color="#ffffff"></a-text>
       </a-box>
 
       <a-box
         class="interactable"
-        position="0.48 -0.15 0.02"
-        width="0.72"
+        position="0.45 -0.15 0.02"
+        width="0.78"
         height="0.14"
         depth="0.03"
         color="#dc2626"
@@ -391,12 +353,12 @@
         animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="4. FOOT & CLIMB POV" position="0 0 0.02" align="center" width="1.6" color="#ffffff"></a-text>
+        <a-text value="4. CLIMB POV" position="0 0 0.02" align="center" width="1.5" wrap-count="16" color="#ffffff"></a-text>
       </a-box>
 
       <a-box
         class="interactable"
-        position="0 -0.35 0.02"
+        position="0 -0.36 0.02"
         width="1.68"
         height="0.14"
         depth="0.03"
@@ -405,7 +367,7 @@
         animation__mouseenter="property: scale; to: 1.03 1.03 1.03; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="5. LOWER, MAKE UP & RETURN TO YARD POV" position="0 0 0.02" align="center" width="1.8" color="#38bdf8"></a-text>
+        <a-text value="5. MAKE UP & RETURN TO YARD" position="0 0 0.02" align="center" width="1.6" wrap-count="32" color="#38bdf8"></a-text>
       </a-box>
     </a-entity>
 
@@ -482,9 +444,9 @@
       const buttons = document.querySelectorAll('.stage-btn');
       buttons.forEach((btn, idx) => {
         if (idx === index) {
-          btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 text-white transition';
+          btn.className = 'stage-btn px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-red-600 text-white transition shadow-sm';
         } else {
-          btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition';
+          btn.className = 'stage-btn px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition';
         }
       });
 

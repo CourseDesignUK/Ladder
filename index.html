@@ -31,7 +31,6 @@
       border: 1px solid var(--border-glass);
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
     }
-    /* Hide A-Frame default VR button to use custom branded button */
     .a-enter-vr {
       display: none !important;
     }
@@ -144,13 +143,14 @@
     shadow="type: pcfsoft"
     vr-mode-ui="enabled: true"
   >
-    <!-- Preloaded Scene Assets (Skybox.jpg & medieval_red_brick_diff_4k.jpg) -->
+    <!-- Preloaded Scene Assets -->
     <a-assets timeout="15000">
       <img id="skybox-tex" src="./Skybox.jpg" crossorigin="anonymous" />
       <img id="brick-tex" src="./medieval_red_brick_diff_4k.jpg" crossorigin="anonymous" />
+      <img id="concrete-tex" src="./concrete.jpg" crossorigin="anonymous" />
     </a-assets>
 
-    <!-- Equirectangular 360 Skybox Dome (./Skybox.jpg) -->
+    <!-- Equirectangular 360 Skybox Dome -->
     <a-sky
       id="scene-skybox"
       src="#skybox-tex"
@@ -163,7 +163,7 @@
     <!-- Lighting Setup -->
     <a-entity light="type: ambient; color: #94a3b8; intensity: 0.8"></a-entity>
     <a-entity
-      light="type: directional; color: #fffbeb; intensity: 2.2; castShadow: true; shadowMapWidth: 2048; shadowMapHeight: 2048; shadowCameraNear: 0.5; shadowCameraFar: 35; shadowCameraLeft: -12; shadowCameraRight: 12; shadowCameraTop: 15; shadowCameraBottom: -5"
+      light="type: directional; color: #fffbeb; intensity: 2.2; castShadow: true; shadowMapWidth: 2048; shadowMapHeight: 2048; shadowCameraNear: 0.5; shadowCameraFar: 35; shadowCameraLeft: -15; shadowCameraRight: 15; shadowCameraTop: 18; shadowCameraBottom: -5"
       position="6 14 8"
     ></a-entity>
 
@@ -172,7 +172,7 @@
          ======================================================================== -->
     <a-entity id="camera-rig" position="0 0 4.5" rotation="0 0 0">
       <a-camera id="main-camera" position="0 1.65 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
-        <!-- Subtle Center Reticle for Non-VR Desktop Click -->
+        <!-- Center Reticle for Non-VR Desktop Click -->
         <a-entity
           cursor="fuse: false; rayOrigin: mouse"
           raycaster="objects: .interactable"
@@ -195,14 +195,31 @@
     </a-entity>
 
     <!-- ========================================================================
-         DRILL YARD ENVIRONMENT & NFCC 4:1 SAFE PITCH FLOOR MARKINGS
+         DRILL YARD ENVIRONMENT (Concrete Ground & Perimeter Brick Wall)
          ======================================================================== -->
     <a-entity id="drill-yard">
-      <!-- Asphalt Ground Plane -->
-      <a-plane position="0 0 0" rotation="-90 0 0" width="60" height="60" color="#111827" roughness="0.9" metalness="0.1" receive-shadow></a-plane>
-      
+      <!-- Concrete Ground Plane (textured with concrete.jpg) -->
+      <a-plane
+        position="0 0 0"
+        rotation="-90 0 0"
+        width="60"
+        height="60"
+        material="src: #concrete-tex; repeat: 30 30; roughness: 0.85; metalness: 0.05"
+        receive-shadow
+      ></a-plane>
+
       <!-- Tactical Grid Overlay -->
       <a-grid width="60" height="60" cell-size="1" cell-color="#1e293b" section-size="5" section-color="#334155" position="0 0.01 0"></a-grid>
+
+      <!-- Perimeter Brick Wall (Enclosing the 30x30 Yard Area) -->
+      <!-- North Wall (Behind Tower) -->
+      <a-box position="0 1.5 -25" width="50" height="3" depth="0.8" material="src: #brick-tex; repeat: 12 1; roughness: 0.9" cast-shadow receive-shadow></a-box>
+      <!-- South Wall (Behind Player) -->
+      <a-box position="0 1.5 25" width="50" height="3" depth="0.8" material="src: #brick-tex; repeat: 12 1; roughness: 0.9" cast-shadow receive-shadow></a-box>
+      <!-- East Wall -->
+      <a-box position="25 1.5 0" width="0.8" height="3" depth="50" material="src: #brick-tex; repeat: 12 1; roughness: 0.9" cast-shadow receive-shadow></a-box>
+      <!-- West Wall -->
+      <a-box position="-25 1.5 0" width="0.8" height="3" depth="50" material="src: #brick-tex; repeat: 12 1; roughness: 0.9" cast-shadow receive-shadow></a-box>
 
       <!-- NFCC 4:1 Safe Pitch Zone Indicator (2.2m out from tower face at Z = -1.8) -->
       <a-plane position="0 0.02 -1.8" rotation="-90 0 0" width="1.6" height="0.6" color="#f59e0b" opacity="0.25"></a-plane>
@@ -219,10 +236,10 @@
     </a-entity>
 
     <!-- ========================================================================
-         4-STOREY TRAINING DRILL TOWER (Textured with medieval_red_brick_diff_4k.jpg)
+         4-STOREY TRAINING DRILL TOWER (3D Recessed Windows & Brick Walls)
          ======================================================================== -->
     <a-entity id="drill-tower" position="0 0 -6.25">
-      <!-- Main Brick Structure (Depth 4.5m -> front face sits at Z = -4.0 in world space) -->
+      <!-- Main Brick Structure (Depth 4.5m -> front face sits at Z = -4.0) -->
       <a-box
         position="0 6.25 0"
         width="4.5"
@@ -233,18 +250,42 @@
         receive-shadow
       ></a-box>
       
-      <!-- 1st Floor Concrete Sill & Window Opening (3.2m) -->
-      <a-box position="0 3.2 2.28" width="4.6" height="0.18" depth="0.2" color="#475569" roughness="0.8"></a-box>
-      <a-box position="0 4.2 2.26" width="1.3" height="1.8" depth="0.1" color="#0f172a"></a-box>
-      
-      <!-- 2nd Floor Target Window (6.8m Sill Height) -->
-      <a-box position="0 6.8 2.28" width="4.6" height="0.22" depth="0.25" color="#ef4444"></a-box>
-      <a-box position="0 7.8 2.26" width="1.3" height="1.8" depth="0.1" color="#090d16"></a-box>
+      <!-- ====================================================================
+           1ST FLOOR RECESS WINDOW (Sill at Y = 3.2, Z = 2.25)
+           ==================================================================== -->
+      <!-- Concrete Sill -->
+      <a-box position="0 3.2 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
+      <!-- Lintel / Header -->
+      <a-box position="0 5.1 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
+      <!-- Recessed Window Cavity (3D Depth Box) -->
+      <a-box position="0 4.15 2.12" width="1.3" height="1.8" depth="0.35" color="#0f172a" roughness="0.9" receive-shadow></a-box>
+      <!-- Inner Back Wall of 1st Floor Window -->
+      <a-box position="0 4.15 1.96" width="1.26" height="1.76" depth="0.05" color="#1e293b"></a-box>
+
+      <!-- ====================================================================
+           2ND FLOOR TARGET WINDOW (Sill at Y = 6.8, Z = 2.25)
+           ==================================================================== -->
+      <!-- Red Safety Sill & Badge -->
+      <a-box position="0 6.8 2.28" width="1.7" height="0.22" depth="0.35" color="#ef4444" roughness="0.7" cast-shadow></a-box>
+      <!-- Lintel / Header -->
+      <a-box position="0 8.7 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
+      <!-- Recessed Window Cavity (3D Depth Box) -->
+      <a-box position="0 7.75 2.12" width="1.3" height="1.8" depth="0.35" color="#090d16" roughness="0.9" receive-shadow></a-box>
+      <!-- Inner Back Wall of 2nd Floor Window -->
+      <a-box position="0 7.75 1.96" width="1.26" height="1.76" depth="0.05" color="#111827"></a-box>
       <a-text value="TARGET SILL (6.8m) - MIN 3 RUNGS ABOVE" position="0 8.95 2.3" align="center" width="4" color="#f87171" font="monoid"></a-text>
 
-      <!-- 3rd Floor Concrete Sill & Window Opening (10.0m) -->
-      <a-box position="0 10.0 2.28" width="4.6" height="0.18" depth="0.2" color="#475569" roughness="0.8"></a-box>
-      <a-box position="0 11.0 2.26" width="1.3" height="1.6" depth="0.1" color="#0f172a"></a-box>
+      <!-- ====================================================================
+           3RD FLOOR RECESS WINDOW (Sill at Y = 10.0, Z = 2.25)
+           ==================================================================== -->
+      <!-- Concrete Sill -->
+      <a-box position="0 10.0 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
+      <!-- Lintel / Header -->
+      <a-box position="0 11.8 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
+      <!-- Recessed Window Cavity (3D Depth Box) -->
+      <a-box position="0 10.9 2.12" width="1.3" height="1.6" depth="0.35" color="#0f172a" roughness="0.9" receive-shadow></a-box>
+      <!-- Inner Back Wall of 3rd Floor Window -->
+      <a-box position="0 10.9 1.96" width="1.26" height="1.56" depth="0.05" color="#1e293b"></a-box>
 
       <!-- Roof Safety Parapet -->
       <a-box position="0 12.6 2.2" width="4.5" height="0.4" depth="0.15" color="#ef4444"></a-box>
@@ -252,7 +293,6 @@
 
     <!-- ========================================================================
          ARTICULATED LADDER RIG (Heel Pivot at 0, 0.05, -1.8)
-         Stage 1 starts horizontal (rotation -88 0 0), pitches to -15 deg (75 deg pitch)
          ======================================================================== -->
     <a-entity id="ladder-heel-pivot" position="0 0.05 -1.8" rotation="-88 0 0">
       
@@ -273,7 +313,7 @@
         <!-- Inner Fly Strings -->
         <a-box position="-0.21 2.75 0" width="0.04" height="5.5" depth="0.15" color="#f8fafc" metalness="0.8" roughness="0.2" cast-shadow></a-box>
         <a-box position="0.21 2.75 0" width="0.04" height="5.5" depth="0.15" color="#f8fafc" metalness="0.8" roughness="0.2" cast-shadow></a-box>
-        <!-- High-Visibility Red Head Rounds / Rubbing Bunnies -->
+        <!-- High-Visibility Red Head Rounds -->
         <a-cylinder position="-0.21 5.45 0.08" rotation="0 0 90" radius="0.07" height="0.08" color="#ef4444"></a-cylinder>
         <a-cylinder position="0.21 5.45 0.08" rotation="0 0 90" radius="0.07" height="0.08" color="#ef4444"></a-cylinder>
         <!-- Procedural Fly Rungs -->
@@ -297,7 +337,7 @@
       <a-text id="vr-console-title" value="STAGE 1: GROUND LADDER" position="0 0.31 0.01" align="center" width="2.1" color="#38bdf8" font="monoid"></a-text>
       <a-text id="vr-console-telemetry" value="PITCH: 2.0 DEG | EXTENSION: 5.5m" position="0 0.21 0.01" align="center" width="1.8" color="#fbbf24" font="monoid"></a-text>
 
-      <!-- 3D Interactive Stage Buttons (Raycaster Class: .interactable) -->
+      <!-- 3D Interactive Stage Buttons -->
       <a-box
         class="interactable"
         position="-0.48 0.04 0.02"
@@ -380,7 +420,7 @@
         title: 'Stage 1: Pre-Pitch Hazard Assessment & Grounding',
         command: 'CMD: "GROUND LADDER"',
         desc: 'Inspect overhead hazards and ground stability. Under-run ladder setup: heel placed in the 4:1 NFCC footprint zone (2.2m from tower face).',
-        heelRotationX: -88, // Horizontal on ground
+        heelRotationX: -88,
         flyExtensionY: 0.15,
         pitchLabel: '2.0° (GROUNDED)',
         heightLabel: '5.5m (HOUSED)',
@@ -390,7 +430,7 @@
         title: 'Stage 2: Under-Running & Pitching to 75° (4:1 Ratio)',
         command: 'CMD: "PITCH LADDER"',
         desc: 'No. 1 footings the heel with both boots on the bottom round; crew under-runs ladder upright to a 75° working angle.',
-        heelRotationX: -15, // 90 - 15 = 75 degrees pitch
+        heelRotationX: -15,
         flyExtensionY: 0.15,
         pitchLabel: '75.0° (4:1 OPTIMAL)',
         heightLabel: '5.3m (BASE)',
@@ -401,7 +441,7 @@
         command: 'CMD: "EXTEND... WELL!"',
         desc: 'Haul extending line smoothly until head extends 3 full rounds above the 6.8m 2nd-floor window sill. Engage pawls and tie off halyard.',
         heelRotationX: -15,
-        flyExtensionY: 3.1, // Extends to ~8.6m total length
+        flyExtensionY: 3.1,
         pitchLabel: '75.0° (PAWLS LOCKED)',
         heightLabel: '8.4m (3 RUNGS OVER)',
         rigPos: '0 0 4.5'
@@ -414,7 +454,7 @@
         flyExtensionY: 3.1,
         pitchLabel: '75.0° (FOOTED)',
         heightLabel: '8.4m (AT SILL POV)',
-        rigPos: '0 5.4 -3.1' // Elevates camera rig to 2nd floor window head height
+        rigPos: '0 5.4 -3.1'
       },
       {
         title: 'Stage 5: Descent, Disengaging Pawls & Making Up',
@@ -432,7 +472,6 @@
       const stage = NFCC_DRILL_STAGES[index];
       if (!stage) return;
 
-      // Update 2D HUD Texts
       document.getElementById('hud-phase-num').textContent = `STAGE ${index + 1} / 5`;
       document.getElementById('hud-pitch-val').textContent = stage.pitchLabel;
       document.getElementById('hud-height-val').textContent = stage.heightLabel;
@@ -440,7 +479,6 @@
       document.getElementById('hud-command-badge').textContent = stage.command;
       document.getElementById('hud-stage-desc').textContent = stage.desc;
 
-      // Update 2D Button Highlights
       const buttons = document.querySelectorAll('.stage-btn');
       buttons.forEach((btn, idx) => {
         if (idx === index) {
@@ -450,13 +488,11 @@
         }
       });
 
-      // Update 3D Diegetic VR Console Text
       const vrTitle = document.getElementById('vr-console-title');
       const vrTelemetry = document.getElementById('vr-console-telemetry');
       if (vrTitle) vrTitle.setAttribute('value', stage.title.toUpperCase());
       if (vrTelemetry) vrTelemetry.setAttribute('value', `PITCH: ${stage.pitchLabel} | HEIGHT: ${stage.heightLabel}`);
 
-      // Animate Ladder Heel Pivot
       const heelPivot = document.getElementById('ladder-heel-pivot');
       heelPivot.setAttribute('animation__pitch', {
         property: 'rotation',
@@ -465,7 +501,6 @@
         easing: 'easeInOutQuad'
       });
 
-      // Animate Extending Fly Section
       const flyCarriage = document.getElementById('ladder-fly-carriage');
       flyCarriage.setAttribute('animation__extend', {
         property: 'position',
@@ -474,7 +509,6 @@
         easing: 'easeInOutQuad'
       });
 
-      // Animate Camera Rig for Climb POV
       const cameraRig = document.getElementById('camera-rig');
       cameraRig.setAttribute('animation__climb', {
         property: 'position',

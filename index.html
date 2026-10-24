@@ -13,9 +13,6 @@
       --glass-bg: linear-gradient(135deg, rgba(30, 41, 59, 0.72) 0%, rgba(15, 23, 42, 0.88) 100%);
       --glass-border: rgba(255, 255, 255, 0.16);
       --glass-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-      --accent-red: #ef4444;
-      --accent-amber: #f59e0b;
-      --accent-cyan: #06b6d4;
     }
     body {
       margin: 0;
@@ -162,7 +159,7 @@
     ></a-sky>
 
     <!-- Lighting Setup -->
-    <a-entity light="type: ambient; color: #94a3b8; intensity: 0.8"></a-entity>
+    <a-entity light="type: ambient; color: #94a3b8; intensity: 0.85"></a-entity>
     <a-entity
       light="type: directional; color: #fffbeb; intensity: 2.2; castShadow: true; shadowMapWidth: 2048; shadowMapHeight: 2048; shadowCameraNear: 0.5; shadowCameraFar: 35; shadowCameraLeft: -15; shadowCameraRight: 15; shadowCameraTop: 18; shadowCameraBottom: -5"
       position="6 14 8"
@@ -229,37 +226,122 @@
     </a-entity>
 
     <!-- ========================================================================
-         4-STOREY TRAINING DRILL TOWER (3D Recessed Windows & Brick Walls)
+         4-STOREY TRAINING DRILL TOWER (Segmented Masonry with True 3D Recessed Windows)
+         Tower Center: Z = -6.25 | Front Face: Z = -4.0 (Local Z = +2.25)
+         Window Openings: Width 1.3m (X: -0.65 to +0.65), Recess Depth: 0.65m (Local Z: 1.60 to 2.25)
          ======================================================================== -->
     <a-entity id="drill-tower" position="0 0 -6.25">
+      
+      <!-- 1. Rear & Core Tower Mass (Local Z = -2.25 to +1.60 -> Depth 3.85m, Center Z = -0.325) -->
       <a-box
-        position="0 6.25 0"
+        position="0 6.25 -0.325"
         width="4.5"
         height="12.5"
-        depth="4.5"
+        depth="3.85"
         material="src: #brick-tex; repeat: 3 8; roughness: 0.9; metalness: 0.05"
         cast-shadow
         receive-shadow
       ></a-box>
-      
-      <!-- 1st Floor Recess Window -->
-      <a-box position="0 3.2 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <a-box position="0 5.1 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <a-box position="0 4.15 2.12" width="1.3" height="1.8" depth="0.35" color="#0f172a" roughness="0.9" receive-shadow></a-box>
-      <a-box position="0 4.15 1.96" width="1.26" height="1.76" depth="0.05" color="#1e293b"></a-box>
 
-      <!-- 2nd Floor Target Window -->
-      <a-box position="0 6.8 2.28" width="1.7" height="0.22" depth="0.35" color="#ef4444" roughness="0.7" cast-shadow></a-box>
-      <a-box position="0 8.7 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <a-box position="0 7.75 2.12" width="1.3" height="1.8" depth="0.35" color="#090d16" roughness="0.9" receive-shadow></a-box>
-      <a-box position="0 7.75 1.96" width="1.26" height="1.76" depth="0.05" color="#111827"></a-box>
+      <!-- 2. Front Left Masonry Pier (X: -2.25 to -0.65 -> Width 1.6m, Center X = -1.45, Depth 0.65m, Center Z = 1.925) -->
+      <a-box
+        position="-1.45 6.25 1.925"
+        width="1.6"
+        height="12.5"
+        depth="0.65"
+        material="src: #brick-tex; repeat: 1 8; roughness: 0.9; metalness: 0.05"
+        cast-shadow
+        receive-shadow
+      ></a-box>
+
+      <!-- 3. Front Right Masonry Pier (X: +0.65 to +2.25 -> Width 1.6m, Center X = +1.45, Depth 0.65m, Center Z = 1.925) -->
+      <a-box
+        position="1.45 6.25 1.925"
+        width="1.6"
+        height="12.5"
+        depth="0.65"
+        material="src: #brick-tex; repeat: 1 8; roughness: 0.9; metalness: 0.05"
+        cast-shadow
+        receive-shadow
+      ></a-box>
+
+      <!-- 4. Center Masonry Spandrel: Ground to 1st Floor Sill (Y: 0.0 to 3.2 -> Height 3.2m, Center Y = 1.6) -->
+      <a-box
+        position="0 1.6 1.925"
+        width="1.3"
+        height="3.2"
+        depth="0.65"
+        material="src: #brick-tex; repeat: 1 2; roughness: 0.9; metalness: 0.05"
+        cast-shadow
+        receive-shadow
+      ></a-box>
+
+      <!-- 5. Center Masonry Spandrel: 1st Floor Header to 2nd Floor Sill (Y: 5.0 to 6.8 -> Height 1.8m, Center Y = 5.9) -->
+      <a-box
+        position="0 5.9 1.925"
+        width="1.3"
+        height="1.8"
+        depth="0.65"
+        material="src: #brick-tex; repeat: 1 1.2; roughness: 0.9; metalness: 0.05"
+        cast-shadow
+        receive-shadow
+      ></a-box>
+
+      <!-- 6. Center Masonry Spandrel: 2nd Floor Header to 3rd Floor Sill (Y: 8.6 to 10.0 -> Height 1.4m, Center Y = 9.3) -->
+      <a-box
+        position="0 9.3 1.925"
+        width="1.3"
+        height="1.4"
+        depth="0.65"
+        material="src: #brick-tex; repeat: 1 1; roughness: 0.9; metalness: 0.05"
+        cast-shadow
+        receive-shadow
+      ></a-box>
+
+      <!-- 7. Center Masonry Spandrel: 3rd Floor Header to Roof (Y: 11.6 to 12.5 -> Height 0.9m, Center Y = 12.05) -->
+      <a-box
+        position="0 12.05 1.925"
+        width="1.3"
+        height="0.9"
+        depth="0.65"
+        material="src: #brick-tex; repeat: 1 0.6; roughness: 0.9; metalness: 0.05"
+        cast-shadow
+        receive-shadow
+      ></a-box>
+
+      <!-- ====================================================================
+           1ST FLOOR RECESSED WINDOW TRIM & INTERIOR CAVITY (Y: 3.2m to 5.0m)
+           ==================================================================== -->
+      <!-- Deep Interior Shadow Backing & Window Frame -->
+      <a-plane position="0 4.1 1.62" width="1.28" height="1.78" color="#050811" roughness="0.9"></a-plane>
+      <!-- Inner Jamb Liners (Left / Right / Top) -->
+      <a-box position="-0.63 4.1 1.92" width="0.04" height="1.8" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
+      <a-box position="0.63 4.1 1.92" width="0.04" height="1.8" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
+      <!-- Protruding Concrete Sill & Lintel -->
+      <a-box position="0 3.16 2.0" width="1.5" height="0.14" depth="0.72" color="#475569" roughness="0.8" cast-shadow receive-shadow></a-box>
+      <a-box position="0 5.06 2.0" width="1.5" height="0.14" depth="0.72" color="#334155" roughness="0.8" cast-shadow></a-box>
+
+      <!-- ====================================================================
+           2ND FLOOR TARGET RECESSED WINDOW (Y: 6.8m to 8.6m - Climb Target)
+           ==================================================================== -->
+      <!-- Deep Interior Room Backplane -->
+      <a-plane position="0 7.7 1.62" width="1.28" height="1.78" color="#050811" roughness="0.9"></a-plane>
+      <!-- Inner Jamb Liners -->
+      <a-box position="-0.63 7.7 1.92" width="0.04" height="1.8" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
+      <a-box position="0.63 7.7 1.92" width="0.04" height="1.8" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
+      <!-- High-Visibility Red Target Sill (Full 0.74m Depth into Recess) -->
+      <a-box position="0 6.75 2.0" width="1.55" height="0.18" depth="0.74" color="#ef4444" roughness="0.6" cast-shadow receive-shadow></a-box>
+      <a-box position="0 8.66 2.0" width="1.5" height="0.14" depth="0.72" color="#334155" roughness="0.8" cast-shadow></a-box>
       <a-text value="TARGET SILL (6.8m) - MIN 3 RUNGS ABOVE" position="0 8.95 2.3" align="center" width="3.6" wrap-count="45" color="#f87171" font="monoid"></a-text>
 
-      <!-- 3rd Floor Recess Window -->
-      <a-box position="0 10.0 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <a-box position="0 11.8 2.28" width="1.7" height="0.16" depth="0.3" color="#475569" roughness="0.8" cast-shadow></a-box>
-      <a-box position="0 10.9 2.12" width="1.3" height="1.6" depth="0.35" color="#0f172a" roughness="0.9" receive-shadow></a-box>
-      <a-box position="0 10.9 1.96" width="1.26" height="1.56" depth="0.05" color="#1e293b"></a-box>
+      <!-- ====================================================================
+           3RD FLOOR RECESSED WINDOW TRIM & INTERIOR CAVITY (Y: 10.0m to 11.6m)
+           ==================================================================== -->
+      <a-plane position="0 10.8 1.62" width="1.28" height="1.58" color="#050811" roughness="0.9"></a-plane>
+      <a-box position="-0.63 10.8 1.92" width="0.04" height="1.6" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
+      <a-box position="0.63 10.8 1.92" width="0.04" height="1.6" depth="0.62" color="#1e293b" roughness="0.8"></a-box>
+      <a-box position="0 9.96 2.0" width="1.5" height="0.14" depth="0.72" color="#475569" roughness="0.8" cast-shadow receive-shadow></a-box>
+      <a-box position="0 11.66 2.0" width="1.5" height="0.14" depth="0.72" color="#334155" roughness="0.8" cast-shadow></a-box>
 
       <!-- Roof Safety Parapet -->
       <a-box position="0 12.6 2.2" width="4.5" height="0.4" depth="0.15" color="#ef4444"></a-box>
@@ -287,87 +369,139 @@
     </a-entity>
 
     <!-- ========================================================================
-         IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (Frosted Glass Style & Safe Text Wrapping)
+         IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (Multi-Layered Frosted Glass UI)
          ======================================================================== -->
     <a-entity id="vr-control-console" position="2.3 1.25 1.8" rotation="0 -35 0">
-      <a-box position="0 0 -0.04" width="1.8" height="1.2" depth="0.05" color="#0f172a" metalness="0.4" roughness="0.5"></a-box>
-      <a-plane position="0 0 -0.01" width="1.75" height="1.15" material="color: #1e293b; opacity: 0.85; transparent: true"></a-plane>
-      <a-plane position="0 0.48 0.005" width="1.66" height="0.12" color="#dc2626"></a-plane>
-      <a-text value="CONSOLE PROTOCOL" position="0 0.48 0.01" align="center" width="2.2" wrap-count="24" color="#ffffff" font="monoid"></a-text>
-
-      <!-- Live 3D Stage Readout with Controlled Wrap -->
-      <a-text id="vr-console-title" value="STAGE 1: GROUND LADDER" position="0 0.32 0.01" align="center" width="1.6" wrap-count="32" color="#38bdf8" font="monoid"></a-text>
-      <a-text id="vr-console-telemetry" value="PITCH: 2.0 DEG | EXTENSION: 5.5m" position="0 0.22 0.01" align="center" width="1.6" wrap-count="38" color="#fbbf24" font="monoid"></a-text>
-
-      <!-- 3D Interactive Stage Buttons -->
+      
+      <!-- Outer Specular Glass Bezel / Rim Glow -->
       <a-box
+        position="0 0 -0.025"
+        width="1.86"
+        height="1.26"
+        depth="0.015"
+        material="color: #94a3b8; opacity: 0.22; transparent: true; roughness: 0.1; metalness: 0.9"
+      ></a-box>
+
+      <!-- Main Translucent Frosted Glass Backing Plate -->
+      <a-box
+        position="0 0 -0.012"
+        width="1.80"
+        height="1.20"
+        depth="0.02"
+        material="color: #0f172a; opacity: 0.68; transparent: true; roughness: 0.15; metalness: 0.3"
+      ></a-box>
+
+      <!-- Subtle Inner Glass Surface Highlight Plane -->
+      <a-plane
+        position="0 0 0.001"
+        width="1.76"
+        height="1.16"
+        material="color: #1e293b; opacity: 0.45; transparent: true; roughness: 0.1; metalness: 0.6"
+      ></a-plane>
+
+      <!-- Top Edge Specular Highlight Line -->
+      <a-plane position="0 0.585 0.005" width="1.76" height="0.008" material="color: #e2e8f0; opacity: 0.45; transparent: true; shader: flat"></a-plane>
+      <!-- Bottom Edge Specular Highlight Line -->
+      <a-plane position="0 -0.585 0.005" width="1.76" height="0.008" material="color: #38bdf8; opacity: 0.35; transparent: true; shader: flat"></a-plane>
+
+      <!-- Translucent Frosted Red Header Pill -->
+      <a-plane
+        position="0 0.48 0.008"
+        width="1.66"
+        height="0.11"
+        material="color: #dc2626; opacity: 0.78; transparent: true; roughness: 0.2"
+      ></a-plane>
+      <a-text value="NFCC DRILL GLASS CONSOLE" position="0 0.48 0.015" align="center" width="1.9" wrap-count="28" color="#ffffff" font="monoid"></a-text>
+
+      <!-- Frosted Telemetry Readout Sub-Panel -->
+      <a-plane
+        position="0 0.27 0.006"
+        width="1.66"
+        height="0.22"
+        material="color: #090d16; opacity: 0.55; transparent: true"
+      ></a-plane>
+      <a-text id="vr-console-title" value="STAGE 1: PRE-PITCH & GROUNDING" position="0 0.32 0.015" align="center" width="1.58" wrap-count="36" color="#38bdf8" font="monoid"></a-text>
+      <a-text id="vr-console-telemetry" value="PITCH: 2.0 DEG | HEIGHT: 5.5m" position="0 0.22 0.015" align="center" width="1.58" wrap-count="38" color="#fbbf24" font="monoid"></a-text>
+
+      <!-- 3D Interactive Glass Stage Buttons -->
+      <a-box
+        id="vr-btn-0"
         class="interactable"
-        position="-0.45 0.04 0.02"
+        position="-0.43 0.04 0.02"
         width="0.78"
         height="0.14"
-        depth="0.03"
-        color="#334155"
+        depth="0.024"
+        material="color: #dc2626; opacity: 0.82; transparent: true; roughness: 0.15; metalness: 0.4"
         onclick="setDrillStage(0)"
-        animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
+        animation__mouseenter="property: scale; to: 1.04 1.04 1.04; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="1. GROUND" position="0 0 0.02" align="center" width="1.5" wrap-count="16" color="#ffffff"></a-text>
+        <a-plane position="0 0.065 0.013" width="0.74" height="0.006" material="color: #ffffff; opacity: 0.35; transparent: true; shader: flat"></a-plane>
+        <a-text value="1. GROUND" position="0 0 0.015" align="center" width="1.4" wrap-count="16" color="#ffffff" font="monoid"></a-text>
       </a-box>
 
       <a-box
+        id="vr-btn-1"
         class="interactable"
-        position="0.45 0.04 0.02"
+        position="0.43 0.04 0.02"
         width="0.78"
         height="0.14"
-        depth="0.03"
-        color="#334155"
+        depth="0.024"
+        material="color: #334155; opacity: 0.65; transparent: true; roughness: 0.15; metalness: 0.4"
         onclick="setDrillStage(1)"
-        animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
+        animation__mouseenter="property: scale; to: 1.04 1.04 1.04; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="2. PITCH 75°" position="0 0 0.02" align="center" width="1.5" wrap-count="16" color="#ffffff"></a-text>
+        <a-plane position="0 0.065 0.013" width="0.74" height="0.006" material="color: #ffffff; opacity: 0.35; transparent: true; shader: flat"></a-plane>
+        <a-text value="2. PITCH 75°" position="0 0 0.015" align="center" width="1.4" wrap-count="16" color="#ffffff" font="monoid"></a-text>
       </a-box>
 
       <a-box
+        id="vr-btn-2"
         class="interactable"
-        position="-0.45 -0.15 0.02"
+        position="-0.43 -0.15 0.02"
         width="0.78"
         height="0.14"
-        depth="0.03"
-        color="#334155"
+        depth="0.024"
+        material="color: #334155; opacity: 0.65; transparent: true; roughness: 0.15; metalness: 0.4"
         onclick="setDrillStage(2)"
-        animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
+        animation__mouseenter="property: scale; to: 1.04 1.04 1.04; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="3. EXTEND" position="0 0 0.02" align="center" width="1.5" wrap-count="16" color="#ffffff"></a-text>
+        <a-plane position="0 0.065 0.013" width="0.74" height="0.006" material="color: #ffffff; opacity: 0.35; transparent: true; shader: flat"></a-plane>
+        <a-text value="3. EXTEND" position="0 0 0.015" align="center" width="1.4" wrap-count="16" color="#ffffff" font="monoid"></a-text>
       </a-box>
 
       <a-box
+        id="vr-btn-3"
         class="interactable"
-        position="0.45 -0.15 0.02"
+        position="0.43 -0.15 0.02"
         width="0.78"
         height="0.14"
-        depth="0.03"
-        color="#dc2626"
+        depth="0.024"
+        material="color: #334155; opacity: 0.65; transparent: true; roughness: 0.15; metalness: 0.4"
         onclick="setDrillStage(3)"
-        animation__mouseenter="property: scale; to: 1.05 1.05 1.05; startEvents: mouseenter; dur: 120"
+        animation__mouseenter="property: scale; to: 1.04 1.04 1.04; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="4. CLIMB POV" position="0 0 0.02" align="center" width="1.5" wrap-count="16" color="#ffffff"></a-text>
+        <a-plane position="0 0.065 0.013" width="0.74" height="0.006" material="color: #ffffff; opacity: 0.35; transparent: true; shader: flat"></a-plane>
+        <a-text value="4. CLIMB POV" position="0 0 0.015" align="center" width="1.4" wrap-count="16" color="#ffffff" font="monoid"></a-text>
       </a-box>
 
       <a-box
+        id="vr-btn-4"
         class="interactable"
         position="0 -0.36 0.02"
-        width="1.68"
+        width="1.64"
         height="0.14"
-        depth="0.03"
-        color="#0f172a"
+        depth="0.024"
+        material="color: #0f172a; opacity: 0.72; transparent: true; roughness: 0.15; metalness: 0.5"
         onclick="setDrillStage(4)"
         animation__mouseenter="property: scale; to: 1.03 1.03 1.03; startEvents: mouseenter; dur: 120"
         animation__mouseleave="property: scale; to: 1 1 1; startEvents: mouseleave; dur: 120"
       >
-        <a-text value="5. MAKE UP & RETURN TO YARD" position="0 0 0.02" align="center" width="1.6" wrap-count="32" color="#38bdf8"></a-text>
+        <a-plane position="0 0.065 0.013" width="1.60" height="0.006" material="color: #38bdf8; opacity: 0.45; transparent: true; shader: flat"></a-plane>
+        <a-text value="5. MAKE UP & RETURN TO YARD" position="0 0 0.015" align="center" width="1.55" wrap-count="32" color="#38bdf8" font="monoid"></a-text>
       </a-box>
     </a-entity>
 
@@ -380,6 +514,7 @@
     const NFCC_DRILL_STAGES = [
       {
         title: 'Stage 1: Pre-Pitch Hazard Assessment & Grounding',
+        shortTitle: 'STAGE 1: PRE-PITCH & GROUNDING',
         command: 'CMD: "GROUND LADDER"',
         desc: 'Inspect overhead hazards and ground stability. Under-run ladder setup: heel placed in the 4:1 NFCC footprint zone (2.2m from tower face).',
         heelRotationX: -88,
@@ -390,6 +525,7 @@
       },
       {
         title: 'Stage 2: Under-Running & Pitching to 75° (4:1 Ratio)',
+        shortTitle: 'STAGE 2: PITCH TO 75 DEG (4:1)',
         command: 'CMD: "PITCH LADDER"',
         desc: 'No. 1 footings the heel with both boots on the bottom round; crew under-runs ladder upright to a 75° working angle.',
         heelRotationX: -15,
@@ -400,6 +536,7 @@
       },
       {
         title: 'Stage 3: Extending Fly, Engaging Pawls & Head Bedding',
+        shortTitle: 'STAGE 3: EXTEND & LOCK PAWLS',
         command: 'CMD: "EXTEND... WELL!"',
         desc: 'Haul extending line smoothly until head extends 3 full rounds above the 6.8m 2nd-floor window sill. Engage pawls and tie off halyard.',
         heelRotationX: -15,
@@ -410,6 +547,7 @@
       },
       {
         title: 'Stage 4: Bracing (Footing) & Tactical Ascent to Sill',
+        shortTitle: 'STAGE 4: FOOTING & CLIMB POV',
         command: 'CMD: "CLIMB & LEG LOCK"',
         desc: 'Firefighter braces strings and ankles. Climber maintains rhythmic step-and-hand contact, ascending to the 2nd-floor window sill.',
         heelRotationX: -15,
@@ -420,6 +558,7 @@
       },
       {
         title: 'Stage 5: Descent, Disengaging Pawls & Making Up',
+        shortTitle: 'STAGE 5: MAKE UP LADDER',
         command: 'CMD: "MAKE UP"',
         desc: 'Climber descends cleanly. Disengage pawls, house extending section gently, check around prior to lowering to ground.',
         heelRotationX: -88,
@@ -434,6 +573,7 @@
       const stage = NFCC_DRILL_STAGES[index];
       if (!stage) return;
 
+      // Update 2D Frosted HUD
       document.getElementById('hud-phase-num').textContent = `STAGE ${index + 1} / 5`;
       document.getElementById('hud-pitch-val').textContent = stage.pitchLabel;
       document.getElementById('hud-height-val').textContent = stage.heightLabel;
@@ -450,11 +590,25 @@
         }
       });
 
+      // Update 3D In-Game Glass Console Text & Active Glass Button State
       const vrTitle = document.getElementById('vr-console-title');
       const vrTelemetry = document.getElementById('vr-console-telemetry');
-      if (vrTitle) vrTitle.setAttribute('value', stage.title.toUpperCase());
+      if (vrTitle) vrTitle.setAttribute('value', stage.shortTitle);
       if (vrTelemetry) vrTelemetry.setAttribute('value', `PITCH: ${stage.pitchLabel} | HEIGHT: ${stage.heightLabel}`);
 
+      for (let i = 0; i < 5; i++) {
+        const vrBtn = document.getElementById(`vr-btn-${i}`);
+        if (vrBtn) {
+          if (i === index) {
+            vrBtn.setAttribute('material', 'color: #dc2626; opacity: 0.85; transparent: true; roughness: 0.15; metalness: 0.4');
+          } else {
+            const defaultColor = i === 4 ? '#0f172a' : '#334155';
+            vrBtn.setAttribute('material', `color: ${defaultColor}; opacity: 0.65; transparent: true; roughness: 0.15; metalness: 0.4`);
+          }
+        }
+      }
+
+      // Animate Ladder Heel Pivot
       const heelPivot = document.getElementById('ladder-heel-pivot');
       heelPivot.setAttribute('animation__pitch', {
         property: 'rotation',
@@ -463,6 +617,7 @@
         easing: 'easeInOutQuad'
       });
 
+      // Animate Extending Fly Section
       const flyCarriage = document.getElementById('ladder-fly-carriage');
       flyCarriage.setAttribute('animation__extend', {
         property: 'position',
@@ -471,6 +626,7 @@
         easing: 'easeInOutQuad'
       });
 
+      // Animate Camera Rig for Climb POV
       const cameraRig = document.getElementById('camera-rig');
       cameraRig.setAttribute('animation__climb', {
         property: 'position',

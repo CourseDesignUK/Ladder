@@ -63,6 +63,47 @@
     });
 
     /**
+     * A-FRAME COMPONENT: console-look-at-player
+     * Smoothly angles the console so its front surface (+Z) always faces the player's head
+     * during and after transitions while keeping the panel level on the horizon.
+     */
+    AFRAME.registerComponent('console-look-at-player', {
+      init: function () {
+        this.cameraEl = document.getElementById('main-camera');
+        this.consoleWorldPos = new THREE.Vector3();
+        this.camWorldPos = new THREE.Vector3();
+        this.targetQuat = new THREE.Quaternion();
+        this.lookMatrix = new THREE.Matrix4();
+        this.upVec = new THREE.Vector3(0, 1, 0);
+      },
+      tick: function () {
+        if (!this.cameraEl) return;
+        this.el.object3D.getWorldPosition(this.consoleWorldPos);
+        this.cameraEl.object3D.getWorldPosition(this.camWorldPos);
+
+        // Keep vertical pitch subtle so panel stays ergonomically upright while yawing directly toward player
+        const targetPt = new THREE.Vector3(
+          this.camWorldPos.x,
+          THREE.MathUtils.lerp(this.consoleWorldPos.y, this.camWorldPos.y, 0.35),
+          this.camWorldPos.z
+        );
+
+        this.lookMatrix.lookAt(targetPt, this.consoleWorldPos, this.upVec);
+        this.targetQuat.setFromRotationMatrix(this.lookMatrix);
+
+        // Convert world target quaternion into parent (#camera-rig) local space
+        if (this.el.object3D.parent) {
+          const parentQuat = new THREE.Quaternion();
+          this.el.object3D.parent.getWorldQuaternion(parentQuat);
+          parentQuat.invert();
+          this.targetQuat.premultiply(parentQuat);
+        }
+
+        this.el.object3D.quaternion.slerp(this.targetQuat, 0.12);
+      }
+    });
+
+    /**
      * Shared UV Lookup Table for the 1440x960 Console Canvas
      */
     window.UV_BUTTON_BOUNDS = [
@@ -97,10 +138,7 @@
     /**
      * A-FRAME COMPONENT: webxr-universal-pointer
      * Directly reads WebXR XRInputSource targetRaySpace every frame.
-     * Works identically for:
-     *   1. Bare Hand Tracking (Quest 3 hand rays + index-thumb pinch `selectstart` / `buttons[0]`)
-     *   2. Physical Touch Controllers (Trigger / Grip / Buttons)
-     * Forces visible 3D laser beam + hit reticle dot without relying on `laser-controls`.
+     * Supports Bare Hand Tracking (Pinch) and Physical Touch Controllers.
      */
     AFRAME.registerComponent('webxr-universal-pointer', {
       schema: {
@@ -116,7 +154,6 @@
         this.lastTriggerTime = 0;
         this.tempMatrix = new THREE.Matrix4();
 
-        // Build explicit visible 3D laser cylinder along -Z axis so the beam never disappears
         const beamEl = document.createElement('a-cylinder');
         beamEl.setAttribute('radius', '0.0035');
         beamEl.setAttribute('height', '12');
@@ -126,7 +163,6 @@
         this.el.appendChild(beamEl);
         this.beamEl = beamEl;
 
-        // Small glowing emitter sphere at hand/controller origin
         const emitterEl = document.createElement('a-sphere');
         emitterEl.setAttribute('radius', '0.015');
         emitterEl.setAttribute('material', `shader: flat; color: ${this.data.lineColor}`);
@@ -135,7 +171,6 @@
 
         this.el.setAttribute('visible', false);
 
-        // Bind native WebXR session selectstart (fires on Hand Pinch AND Controller Trigger)
         this.onSessionSelect = (xrEvt) => {
           if (!xrEvt.inputSource) return;
           if (xrEvt.inputSource.handedness === this.data.hand) {
@@ -207,7 +242,6 @@
           return;
         }
 
-        // Retrieve raw WebXR targetRaySpace pose (works for both bare Hand Tracking and Controllers)
         const pose = frame.getPose(matchedSource.targetRaySpace, refSpace);
         if (!pose) {
           this.el.setAttribute('visible', false);
@@ -217,12 +251,10 @@
 
         this.el.setAttribute('visible', true);
 
-        // Apply pose matrix directly in local camera-rig space
         this.tempMatrix.fromArray(pose.transform.matrix);
         this.el.object3D.position.setFromMatrixPosition(this.tempMatrix);
         this.el.object3D.quaternion.setFromRotationMatrix(this.tempMatrix);
 
-        // Poll gamepad buttons (In WebXR Hand Tracking, index+thumb pinch sets buttons[0].pressed = true)
         if (matchedSource.gamepad && matchedSource.gamepad.buttons && matchedSource.gamepad.buttons.length > 0) {
           const isPressed = matchedSource.gamepad.buttons.some((b) => b && b.pressed);
           if (isPressed && !this.wasPressed) {
@@ -234,7 +266,6 @@
           this.wasPressed = isPressed;
         }
 
-        // Evaluate Raycaster Intersections & adjust beam length to hit point
         const raycaster = this.el.components.raycaster;
         if (!raycaster || !raycaster.intersections || raycaster.intersections.length === 0) {
           if (this.dotEl) this.dotEl.setAttribute('visible', false);
@@ -266,11 +297,7 @@
     });
 
     /**
-     * A-FRAME COMPONENT: gaze-And-Mouse-Controller
-     * Provides:
-     *   1. Desktop Mouse Raycasting + Click
-     *   2. In-VR Head-Gaze Center Ray + 1.2s Dwell Auto-Click (Hands-Free Fallback)
-     *   3. Any VR Pinch / Screen Tap while gazing at a button fires immediately
+     * A-FRAME COMPONENT: gaze-and-mouse-controller
      */
     AFRAME.registerComponent('gaze-and-mouse-controller', {
       schema: {
@@ -295,9 +322,7 @@
         this.el.addEventListener('click', onTrigger);
         this.el.addEventListener('mousedown', onTrigger);
 
-        // If user pinches either hand while looking at a button with head-gaze, trigger it
         this.el.sceneEl.addEventListener('enter-vr', () => {
-          // Switch rayOrigin from desktop mouse to head-center entity in VR
           this.el.setAttribute('cursor', 'fuse: false; rayOrigin: entity');
           const xrSession = this.el.sceneEl.renderer.xr.getSession();
           if (xrSession) {
@@ -352,7 +377,6 @@
           window.dwellProgress = 0;
           window.updateControllerHover(this.el.id, hitStage);
         } else if (isVR && hitStage !== -1 && hitStage !== window.currentDrillStage) {
-          // Progress dwell timer in VR so hands-free users can select buttons by looking at them for 1.2s
           if (this.dwellTriggeredForStage !== hitStage) {
             const elapsed = time - this.dwellStart;
             window.dwellProgress = Math.min(1, elapsed / this.data.dwellMs);
@@ -583,7 +607,6 @@
         }
         ctx.fill();
 
-        // Draw Gaze Dwell Progress Fill Bar inside Hovered Button
         if (isHovered && !isActive && window.dwellProgress > 0) {
           ctx.save();
           ctx.clip();
@@ -608,7 +631,6 @@
         ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
       });
 
-      // Refresh Three.js CanvasTexture
       const displayEl = document.getElementById('vr-console-surface');
       if (displayEl && displayEl.getObject3D('mesh')) {
         const mat = displayEl.getObject3D('mesh').material;
@@ -689,7 +711,7 @@
   </div>
 
   <!-- ==========================================================================
-       A-FRAME 3D / WEBXR SCENE (Explicit Hand-Tracking + Universal Ray Pointers)
+       A-FRAME 3D / WEBXR SCENE
        ========================================================================== -->
   <a-scene
     id="xr-scene"
@@ -729,7 +751,11 @@
     <a-sphere id="gaze-ray-dot" radius="0.014" material="color: #fbbf24; shader: flat" visible="false"></a-sphere>
 
     <!-- ========================================================================
-         PLAYER CAMERA RIG & UNIVERSAL HAND / CONTROLLER / GAZE RAYCASTERS
+         PLAYER CAMERA RIG, UNIVERSAL POINTERS & RIG-LOCKED DIEGETIC CONSOLE
+         Parenting #vr-control-console inside #camera-rig ensures the player sees
+         the menu travel smoothly with them during the climb and slide to their
+         right-hand side in front of the tower wall, never clipping or obscuring
+         the ladder or target window.
          ======================================================================== -->
     <a-entity id="camera-rig" position="0 0 4.5" rotation="0 0 0">
       <a-camera id="main-camera" position="0 1.65 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
@@ -756,9 +782,93 @@
         webxr-universal-pointer="hand: right; dotSelector: #right-ray-dot; lineColor: #22d3ee"
       ></a-entity>
 
-      <!-- Optional 3D Articulated Hand Meshes for Visual Hand Presence -->
+      <!-- 3D Articulated Hand Meshes for Visual Hand Presence -->
       <a-entity hand-tracking-controls="hand: left; modelColor: #94a3b8"></a-entity>
       <a-entity hand-tracking-controls="hand: right; modelColor: #94a3b8"></a-entity>
+
+      <!-- ======================================================================
+           IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (Rig-Relative)
+           - Yard Default: position="1.35 1.35 -2.1" (Front-right of player)
+           - On Ladder (Stage 4): smoothly animates to "1.55 1.55 -0.55" (Directly to
+             player's right side, completely clear of the tower wall at Z = -4.0 and
+             keeping the 2nd-floor window straight ahead unobstructed) while
+             `console-look-at-player` continuously rotates the window to face the player.
+           ====================================================================== -->
+      <a-entity
+        id="vr-control-console"
+        position="1.35 1.35 -2.1"
+        console-look-at-player
+      >
+        <!-- Subtle Cyan Beacon Frame so Player Tracks Menu Motion Easily in Peripheral Vision -->
+        <a-box
+          position="0 0 -0.015"
+          width="1.82"
+          height="1.22"
+          depth="0.02"
+          material="color: #0f172a; opacity: 0.72; transparent: true; roughness: 0.15; metalness: 0.6"
+        ></a-box>
+
+        <!-- Ray-Traced High-Resolution 2D Canvas Surface -->
+        <a-plane
+          id="vr-console-surface"
+          class="interactable"
+          position="0 0 0"
+          width="1.80"
+          height="1.20"
+          material="src: #vr-ui-canvas; transparent: true; shader: flat"
+        ></a-plane>
+
+        <!-- Dedicated 3D Button Hitboxes -->
+        <a-box
+          class="interactable"
+          vr-button-hitbox="stage: 0"
+          position="-0.425 -0.06 0.012"
+          width="0.79"
+          height="0.14"
+          depth="0.02"
+          material="opacity: 0.001; transparent: true; depthWrite: false"
+        ></a-box>
+
+        <a-box
+          class="interactable"
+          vr-button-hitbox="stage: 1"
+          position="0.425 -0.06 0.012"
+          width="0.79"
+          height="0.14"
+          depth="0.02"
+          material="opacity: 0.001; transparent: true; depthWrite: false"
+        ></a-box>
+
+        <a-box
+          class="interactable"
+          vr-button-hitbox="stage: 2"
+          position="-0.425 -0.25 0.012"
+          width="0.79"
+          height="0.14"
+          depth="0.02"
+          material="opacity: 0.001; transparent: true; depthWrite: false"
+        ></a-box>
+
+        <a-box
+          class="interactable"
+          vr-button-hitbox="stage: 3"
+          position="0.425 -0.25 0.012"
+          width="0.79"
+          height="0.14"
+          depth="0.02"
+          material="opacity: 0.001; transparent: true; depthWrite: false"
+        ></a-box>
+
+        <a-box
+          class="interactable"
+          vr-button-hitbox="stage: 4"
+          position="0 -0.44 0.012"
+          width="1.64"
+          height="0.14"
+          depth="0.02"
+          material="opacity: 0.001; transparent: true; depthWrite: false"
+        ></a-box>
+      </a-entity>
     </a-entity>
 
     <!-- ========================================================================
@@ -917,82 +1027,6 @@
       </a-entity>
     </a-entity>
 
-    <!-- ========================================================================
-         IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE
-         ======================================================================== -->
-    <a-entity id="vr-control-console" position="1.35 1.35 2.4" rotation="0 -28 0">
-      
-      <!-- 3D Frosted Glass Backing Volume -->
-      <a-box
-        position="0 0 -0.015"
-        width="1.82"
-        height="1.22"
-        depth="0.02"
-        material="color: #0f172a; opacity: 0.65; transparent: true; roughness: 0.15; metalness: 0.6"
-      ></a-box>
-
-      <!-- Ray-Traced High-Resolution 2D Canvas Surface -->
-      <a-plane
-        id="vr-console-surface"
-        class="interactable"
-        position="0 0 0"
-        width="1.80"
-        height="1.20"
-        material="src: #vr-ui-canvas; transparent: true; shader: flat"
-      ></a-plane>
-
-      <!-- Dedicated 3D Button Hitboxes -->
-      <a-box
-        class="interactable"
-        vr-button-hitbox="stage: 0"
-        position="-0.425 -0.06 0.012"
-        width="0.79"
-        height="0.14"
-        depth="0.02"
-        material="opacity: 0.001; transparent: true; depthWrite: false"
-      ></a-box>
-
-      <a-box
-        class="interactable"
-        vr-button-hitbox="stage: 1"
-        position="0.425 -0.06 0.012"
-        width="0.79"
-        height="0.14"
-        depth="0.02"
-        material="opacity: 0.001; transparent: true; depthWrite: false"
-      ></a-box>
-
-      <a-box
-        class="interactable"
-        vr-button-hitbox="stage: 2"
-        position="-0.425 -0.25 0.012"
-        width="0.79"
-        height="0.14"
-        depth="0.02"
-        material="opacity: 0.001; transparent: true; depthWrite: false"
-      ></a-box>
-
-      <a-box
-        class="interactable"
-        vr-button-hitbox="stage: 3"
-        position="0.425 -0.25 0.012"
-        width="0.79"
-        height="0.14"
-        depth="0.02"
-        material="opacity: 0.001; transparent: true; depthWrite: false"
-      ></a-box>
-
-      <a-box
-        class="interactable"
-        vr-button-hitbox="stage: 4"
-        position="0 -0.44 0.012"
-        width="1.64"
-        height="0.14"
-        depth="0.02"
-        material="opacity: 0.001; transparent: true; depthWrite: false"
-      ></a-box>
-    </a-entity>
-
   </a-scene>
 
   <!-- ==========================================================================
@@ -1009,7 +1043,9 @@
         pitchLabel: '2.0° (GROUNDED)',
         heightLabel: '5.5m (HOUSED)',
         rigPos: '0 0 4.5',
-        consolePos: '1.35 1.35 2.4'
+        // Rig-local position: forward-right in yard
+        consoleLocalPos: '1.35 1.35 -2.1',
+        consoleScale: '1 1 1'
       },
       {
         title: 'Stage 2: Under-Running & Pitching to 75° (4:1 Ratio)',
@@ -1020,7 +1056,8 @@
         pitchLabel: '75.0° (4:1 OPTIMAL)',
         heightLabel: '5.3m (BASE)',
         rigPos: '0 0 4.5',
-        consolePos: '1.35 1.35 2.4'
+        consoleLocalPos: '1.35 1.35 -2.1',
+        consoleScale: '1 1 1'
       },
       {
         title: 'Stage 3: Extending Fly, Engaging Pawls & Head Bedding',
@@ -1031,7 +1068,8 @@
         pitchLabel: '75.0° (PAWLS LOCKED)',
         heightLabel: '8.4m (3 RUNGS OVER)',
         rigPos: '0 0 4.5',
-        consolePos: '1.35 1.35 2.4'
+        consoleLocalPos: '1.35 1.35 -2.1',
+        consoleScale: '1 1 1'
       },
       {
         title: 'Stage 4: Bracing (Footing) & Tactical Ascent to Sill',
@@ -1042,7 +1080,11 @@
         pitchLabel: '75.0° (FOOTED)',
         heightLabel: '8.4m (AT SILL POV)',
         rigPos: '0 5.4 -3.1',
-        consolePos: '1.25 6.75 -4.6'
+        // Rig is at Z = -3.1; Tower brick front face is at Z = -4.0.
+        // Local Z = -0.35 places the console at World Z = -3.45 (0.55m in front of the brick wall)
+        // and X = 1.45 places it cleanly to the right of the player & window sill, never clipped or obscured.
+        consoleLocalPos: '1.45 1.55 -0.35',
+        consoleScale: '0.88 0.88 0.88'
       },
       {
         title: 'Stage 5: Descent, Disengaging Pawls & Making Up',
@@ -1053,7 +1095,8 @@
         pitchLabel: '2.0° (MADE UP)',
         heightLabel: '5.5m (HOUSED)',
         rigPos: '0 0 4.5',
-        consolePos: '1.35 1.35 2.4'
+        consoleLocalPos: '1.35 1.35 -2.1',
+        consoleScale: '1 1 1'
       }
     ];
 
@@ -1140,12 +1183,18 @@
         easing: 'easeInOutCubic'
       });
 
-      // Keep 3D VR Console within controller ray range during climb
+      // Smoothly animate Rig-Parented Console to right flank on ladder (while `console-look-at-player` keeps it facing player)
       const vrConsole = document.getElementById('vr-control-console');
-      if (vrConsole && stage.consolePos) {
-        vrConsole.setAttribute('animation__follow', {
+      if (vrConsole && stage.consoleLocalPos) {
+        vrConsole.setAttribute('animation__reposition', {
           property: 'position',
-          to: stage.consolePos,
+          to: stage.consoleLocalPos,
+          dur: 2200,
+          easing: 'easeInOutCubic'
+        });
+        vrConsole.setAttribute('animation__rescale', {
+          property: 'scale',
+          to: stage.consoleScale || '1 1 1',
           dur: 2200,
           easing: 'easeInOutCubic'
         });
@@ -1159,8 +1208,10 @@
 
       const vrConsole = document.getElementById('vr-control-console');
       if (vrConsole) {
-        vrConsole.removeAttribute('animation__follow');
-        vrConsole.setAttribute('position', '1.35 1.35 2.4');
+        vrConsole.removeAttribute('animation__reposition');
+        vrConsole.removeAttribute('animation__rescale');
+        vrConsole.setAttribute('position', '1.35 1.35 -2.1');
+        vrConsole.setAttribute('scale', '1 1 1');
       }
     };
 

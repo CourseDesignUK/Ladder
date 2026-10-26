@@ -64,7 +64,6 @@
 
     /**
      * Shared UV Lookup Table for the 1440x960 Console Canvas
-     * Converts a 2D UV coordinate (u: 0..1, v: 0..1) into button index (0..4 or -1).
      */
     window.UV_BUTTON_BOUNDS = [
       { idx: 0, uMin: 64 / 1440,  uMax: 696 / 1440,  vMin: 1 - 584 / 960, vMax: 1 - 472 / 960 },
@@ -78,12 +77,10 @@
       if (!hit || !hit.object || !hit.object.el) return -1;
       const el = hit.object.el;
 
-      // 1. Check if the ray hit a dedicated 3D button box collider directly
       if (el.hasAttribute('data-stage')) {
         return parseInt(el.getAttribute('data-stage'), 10);
       }
 
-      // 2. Fallback: Check UV coordinates on the console canvas surface
       if (el.id === 'vr-console-surface' && hit.uv) {
         const u = hit.uv.x;
         const v = hit.uv.y;
@@ -98,67 +95,71 @@
     };
 
     /**
-     * A-FRAME COMPONENT: quest-ray-controller
-     * Attached to Left & Right VR controllers and Desktop/Gaze rays.
-     * Directly polls raycaster intersections every frame for hover state,
-     * positions the 3D laser reticle dot, and binds all VR hardware inputs
-     * (Trigger, Grip, A/X Buttons, Thumbstick Click, Hand-Tracking Pinch, Mouse Click)
-     * directly on the controller entity so clicks never fail.
+     * A-FRAME COMPONENT: webxr-universal-pointer
+     * Directly reads WebXR XRInputSource targetRaySpace every frame.
+     * Works identically for:
+     *   1. Bare Hand Tracking (Quest 3 hand rays + index-thumb pinch `selectstart` / `buttons[0]`)
+     *   2. Physical Touch Controllers (Trigger / Grip / Buttons)
+     * Forces visible 3D laser beam + hit reticle dot without relying on `laser-controls`.
      */
-    AFRAME.registerComponent('quest-ray-controller', {
+    AFRAME.registerComponent('webxr-universal-pointer', {
       schema: {
+        hand: { type: 'string', default: 'right' },
         dotSelector: { type: 'string', default: '' },
-        hand: { type: 'string', default: 'right' }
+        lineColor: { type: 'color', default: '#22d3ee' }
       },
 
       init: function () {
         this.dotEl = this.data.dotSelector ? document.querySelector(this.data.dotSelector) : null;
         this.hoveredStage = -1;
+        this.wasPressed = false;
         this.lastTriggerTime = 0;
+        this.tempMatrix = new THREE.Matrix4();
 
-        // Bind all controller & cursor activation events directly on the raycaster host entity
-        this.onActivate = (evt) => {
-          const now = performance.now();
-          if (now - this.lastTriggerTime < 180) return; // Debounce duplicate events
+        // Build explicit visible 3D laser cylinder along -Z axis so the beam never disappears
+        const beamEl = document.createElement('a-cylinder');
+        beamEl.setAttribute('radius', '0.0035');
+        beamEl.setAttribute('height', '12');
+        beamEl.setAttribute('position', '0 0 -6');
+        beamEl.setAttribute('rotation', '90 0 0');
+        beamEl.setAttribute('material', `shader: flat; color: ${this.data.lineColor}; opacity: 0.85; transparent: true`);
+        this.el.appendChild(beamEl);
+        this.beamEl = beamEl;
 
-          const stageIdx = this.getCurrentHitStage();
-          if (stageIdx !== -1) {
-            this.lastTriggerTime = now;
-            window.setDrillStage(stageIdx);
-            this.pulseHaptics(0.75, 50);
+        // Small glowing emitter sphere at hand/controller origin
+        const emitterEl = document.createElement('a-sphere');
+        emitterEl.setAttribute('radius', '0.015');
+        emitterEl.setAttribute('material', `shader: flat; color: ${this.data.lineColor}`);
+        this.el.appendChild(emitterEl);
+        this.emitterEl = emitterEl;
+
+        this.el.setAttribute('visible', false);
+
+        // Bind native WebXR session selectstart (fires on Hand Pinch AND Controller Trigger)
+        this.onSessionSelect = (xrEvt) => {
+          if (!xrEvt.inputSource) return;
+          if (xrEvt.inputSource.handedness === this.data.hand) {
+            this.fireCurrentStage();
           }
         };
 
-        // Hardware controller events (emitted directly on #left-hand / #right-hand)
-        const controllerEvents = [
-          'triggerdown',
-          'gripdown',
-          'abuttondown',
-          'bbuttondown',
-          'xbuttondown',
-          'ybuttondown',
-          'thumbstickdown',
-          'selectstart',
-          'click',
-          'mousedown'
-        ];
-        controllerEvents.forEach((evtName) => {
-          this.el.addEventListener(evtName, this.onActivate);
-        });
-
-        // Also bind to WebXR session 'selectstart' for native Quest Hand Tracking Pinch & Touch triggers
         this.el.sceneEl.addEventListener('enter-vr', () => {
           const xrSession = this.el.sceneEl.renderer.xr.getSession();
           if (xrSession) {
-            xrSession.addEventListener('selectstart', (xrEvt) => {
-              // Match handedness if available, or allow any active ray hit
-              const srcHand = xrEvt.inputSource ? xrEvt.inputSource.handedness : '';
-              if (!srcHand || srcHand === this.data.hand) {
-                this.onActivate(xrEvt);
-              }
-            });
+            xrSession.addEventListener('selectstart', this.onSessionSelect);
+            xrSession.addEventListener('squeeze', this.onSessionSelect);
           }
         });
+      },
+
+      fireCurrentStage: function () {
+        const now = performance.now();
+        if (now - this.lastTriggerTime < 220) return;
+        const stageIdx = this.getCurrentHitStage();
+        if (stageIdx !== -1) {
+          this.lastTriggerTime = now;
+          window.setDrillStage(stageIdx);
+        }
       },
 
       getCurrentHitStage: function () {
@@ -166,7 +167,6 @@
         if (!raycaster || !raycaster.intersections || raycaster.intersections.length === 0) {
           return -1;
         }
-        // Check all intersections along the ray in order (3D button collider first, then UV plane)
         for (let i = 0; i < raycaster.intersections.length; i++) {
           const idx = window.resolveStageFromHit(raycaster.intersections[i]);
           if (idx !== -1) return idx;
@@ -174,19 +174,31 @@
         return -1;
       },
 
-      pulseHaptics: function (intensity, durationMs) {
-        const tracked = this.el.components['tracked-controls'];
-        if (tracked && tracked.controller && tracked.controller.gamepad && tracked.controller.gamepad.hapticActuators) {
-          const actuator = tracked.controller.gamepad.hapticActuators[0];
-          if (actuator && actuator.pulse) {
-            actuator.pulse(intensity, durationMs);
+      tick: function () {
+        const sceneEl = this.el.sceneEl;
+        const xr = sceneEl.renderer ? sceneEl.renderer.xr : null;
+        if (!xr || !xr.isPresenting) {
+          this.el.setAttribute('visible', false);
+          if (this.dotEl) this.dotEl.setAttribute('visible', false);
+          return;
+        }
+
+        const session = xr.getSession();
+        const frame = sceneEl.frame;
+        const refSpace = xr.getReferenceSpace();
+        if (!session || !frame || !refSpace) return;
+
+        let matchedSource = null;
+        for (let i = 0; i < session.inputSources.length; i++) {
+          const src = session.inputSources[i];
+          if (src.handedness === this.data.hand && src.targetRaySpace) {
+            matchedSource = src;
+            break;
           }
         }
-      },
 
-      tick: function () {
-        const raycaster = this.el.components.raycaster;
-        if (!raycaster || !raycaster.intersections || raycaster.intersections.length === 0) {
+        if (!matchedSource) {
+          this.el.setAttribute('visible', false);
           if (this.dotEl) this.dotEl.setAttribute('visible', false);
           if (this.hoveredStage !== -1) {
             this.hoveredStage = -1;
@@ -195,28 +207,173 @@
           return;
         }
 
-        // Position 3D laser dot at closest surface hit
+        // Retrieve raw WebXR targetRaySpace pose (works for both bare Hand Tracking and Controllers)
+        const pose = frame.getPose(matchedSource.targetRaySpace, refSpace);
+        if (!pose) {
+          this.el.setAttribute('visible', false);
+          if (this.dotEl) this.dotEl.setAttribute('visible', false);
+          return;
+        }
+
+        this.el.setAttribute('visible', true);
+
+        // Apply pose matrix directly in local camera-rig space
+        this.tempMatrix.fromArray(pose.transform.matrix);
+        this.el.object3D.position.setFromMatrixPosition(this.tempMatrix);
+        this.el.object3D.quaternion.setFromRotationMatrix(this.tempMatrix);
+
+        // Poll gamepad buttons (In WebXR Hand Tracking, index+thumb pinch sets buttons[0].pressed = true)
+        if (matchedSource.gamepad && matchedSource.gamepad.buttons && matchedSource.gamepad.buttons.length > 0) {
+          const isPressed = matchedSource.gamepad.buttons.some((b) => b && b.pressed);
+          if (isPressed && !this.wasPressed) {
+            this.fireCurrentStage();
+            if (matchedSource.gamepad.hapticActuators && matchedSource.gamepad.hapticActuators[0]) {
+              matchedSource.gamepad.hapticActuators[0].pulse(0.7, 45);
+            }
+          }
+          this.wasPressed = isPressed;
+        }
+
+        // Evaluate Raycaster Intersections & adjust beam length to hit point
+        const raycaster = this.el.components.raycaster;
+        if (!raycaster || !raycaster.intersections || raycaster.intersections.length === 0) {
+          if (this.dotEl) this.dotEl.setAttribute('visible', false);
+          this.beamEl.setAttribute('height', '12');
+          this.beamEl.setAttribute('position', '0 0 -6');
+          if (this.hoveredStage !== -1) {
+            this.hoveredStage = -1;
+            window.clearControllerHover(this.el.id);
+          }
+          return;
+        }
+
         const closestHit = raycaster.intersections[0];
-        if (this.dotEl && closestHit) {
+        const dist = Math.max(0.1, closestHit.distance);
+        this.beamEl.setAttribute('height', dist);
+        this.beamEl.setAttribute('position', `0 0 ${-dist / 2}`);
+
+        if (this.dotEl) {
           this.dotEl.setAttribute('visible', true);
           this.dotEl.object3D.position.copy(closestHit.point);
         }
 
-        // Resolve button hover state
         const hitStage = this.getCurrentHitStage();
         if (hitStage !== this.hoveredStage) {
           this.hoveredStage = hitStage;
-          if (hitStage !== -1) {
-            this.pulseHaptics(0.2, 15); // Subtle hover tick on Quest controller
-          }
           window.updateControllerHover(this.el.id, hitStage);
         }
       }
     });
 
     /**
+     * A-FRAME COMPONENT: gaze-And-Mouse-Controller
+     * Provides:
+     *   1. Desktop Mouse Raycasting + Click
+     *   2. In-VR Head-Gaze Center Ray + 1.2s Dwell Auto-Click (Hands-Free Fallback)
+     *   3. Any VR Pinch / Screen Tap while gazing at a button fires immediately
+     */
+    AFRAME.registerComponent('gaze-and-mouse-controller', {
+      schema: {
+        dotSelector: { type: 'string', default: '' },
+        dwellMs: { type: 'number', default: 1200 }
+      },
+
+      init: function () {
+        this.dotEl = this.data.dotSelector ? document.querySelector(this.data.dotSelector) : null;
+        this.hoveredStage = -1;
+        this.dwellStart = 0;
+        this.dwellTriggeredForStage = -1;
+
+        const onTrigger = () => {
+          const st = this.getCurrentHitStage();
+          if (st !== -1) {
+            window.setDrillStage(st);
+            this.dwellTriggeredForStage = st;
+          }
+        };
+
+        this.el.addEventListener('click', onTrigger);
+        this.el.addEventListener('mousedown', onTrigger);
+
+        // If user pinches either hand while looking at a button with head-gaze, trigger it
+        this.el.sceneEl.addEventListener('enter-vr', () => {
+          // Switch rayOrigin from desktop mouse to head-center entity in VR
+          this.el.setAttribute('cursor', 'fuse: false; rayOrigin: entity');
+          const xrSession = this.el.sceneEl.renderer.xr.getSession();
+          if (xrSession) {
+            xrSession.addEventListener('selectstart', onTrigger);
+          }
+        });
+
+        this.el.sceneEl.addEventListener('exit-vr', () => {
+          this.el.setAttribute('cursor', 'fuse: false; rayOrigin: mouse');
+          window.dwellProgress = 0;
+        });
+      },
+
+      getCurrentHitStage: function () {
+        const raycaster = this.el.components.raycaster;
+        if (!raycaster || !raycaster.intersections || raycaster.intersections.length === 0) {
+          return -1;
+        }
+        for (let i = 0; i < raycaster.intersections.length; i++) {
+          const idx = window.resolveStageFromHit(raycaster.intersections[i]);
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      },
+
+      tick: function (time) {
+        const raycaster = this.el.components.raycaster;
+        const isVR = this.el.sceneEl.is('vr-mode');
+
+        if (!raycaster || !raycaster.intersections || raycaster.intersections.length === 0) {
+          if (this.dotEl) this.dotEl.setAttribute('visible', false);
+          if (this.hoveredStage !== -1) {
+            this.hoveredStage = -1;
+            this.dwellTriggeredForStage = -1;
+            window.dwellProgress = 0;
+            window.clearControllerHover(this.el.id);
+          }
+          return;
+        }
+
+        const closestHit = raycaster.intersections[0];
+        if (this.dotEl && closestHit) {
+          this.dotEl.setAttribute('visible', true);
+          this.dotEl.object3D.position.copy(closestHit.point);
+        }
+
+        const hitStage = this.getCurrentHitStage();
+        if (hitStage !== this.hoveredStage) {
+          this.hoveredStage = hitStage;
+          this.dwellStart = time;
+          this.dwellTriggeredForStage = -1;
+          window.dwellProgress = 0;
+          window.updateControllerHover(this.el.id, hitStage);
+        } else if (isVR && hitStage !== -1 && hitStage !== window.currentDrillStage) {
+          // Progress dwell timer in VR so hands-free users can select buttons by looking at them for 1.2s
+          if (this.dwellTriggeredForStage !== hitStage) {
+            const elapsed = time - this.dwellStart;
+            window.dwellProgress = Math.min(1, elapsed / this.data.dwellMs);
+            updateVRConsoleCanvas(window.currentDrillStage, window.currentHoveredBtn);
+            if (elapsed >= this.data.dwellMs) {
+              this.dwellTriggeredForStage = hitStage;
+              window.dwellProgress = 0;
+              window.setDrillStage(hitStage);
+            }
+          }
+        } else {
+          if (window.dwellProgress !== 0) {
+            window.dwellProgress = 0;
+            updateVRConsoleCanvas(window.currentDrillStage, window.currentHoveredBtn);
+          }
+        }
+      }
+    });
+
+    /**
      * A-FRAME COMPONENT: vr-button-hitbox
-     * Visual 3D highlight border & direct click listener for both Desktop Mouse and VR Cursor.
      */
     AFRAME.registerComponent('vr-button-hitbox', {
       schema: {
@@ -224,7 +381,6 @@
       },
       init: function () {
         this.el.setAttribute('data-stage', this.data.stage);
-
         this.el.addEventListener('click', (evt) => {
           if (evt && evt.stopPropagation) evt.stopPropagation();
           window.setDrillStage(this.data.stage);
@@ -317,15 +473,15 @@
       ctx.fill();
       ctx.restore();
 
-      // WEBXR PROTOCOL Pill
-      roundRectPath(ctx, 108, 68, 320, 28, 6);
+      // Interaction Mode Badge
+      roundRectPath(ctx, 108, 68, 460, 28, 6);
       ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
       ctx.fill();
       ctx.font = `600 14px ${fontMono}`;
       ctx.fillStyle = '#22d3ee';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('AIM LASER & PULL TRIGGER / PINCH', 118, 83);
+      ctx.fillText('HAND PINCH / CONTROLLER / 1.2s GAZE DWELL', 118, 83);
 
       // Header Main Title
       ctx.font = `700 24px ${fontSans}`;
@@ -427,6 +583,15 @@
         }
         ctx.fill();
 
+        // Draw Gaze Dwell Progress Fill Bar inside Hovered Button
+        if (isHovered && !isActive && window.dwellProgress > 0) {
+          ctx.save();
+          ctx.clip();
+          ctx.fillStyle = 'rgba(34, 211, 238, 0.38)';
+          ctx.fillRect(b.x, b.y, b.w * window.dwellProgress, b.h);
+          ctx.restore();
+        }
+
         ctx.lineWidth = isHovered ? 4 : 2;
         ctx.strokeStyle = isActive
           ? '#fca5a5'
@@ -524,10 +689,11 @@
   </div>
 
   <!-- ==========================================================================
-       A-FRAME 3D / WEBXR SCENE (Meta Quest 3 Ray-Tracing Controller Setup)
+       A-FRAME 3D / WEBXR SCENE (Explicit Hand-Tracking + Universal Ray Pointers)
        ========================================================================== -->
   <a-scene
     id="xr-scene"
+    webxr="optionalFeatures: hand-tracking, local-floor, bounded-floor, layers"
     renderer="antialias: true; colorManagement: true; physicallyCorrectLights: true; highRefreshRate: true; foveationLevel: 2; exposure: 1.1"
     shadow="type: pcfsoft"
     vr-mode-ui="enabled: true"
@@ -557,43 +723,42 @@
       position="6 14 8"
     ></a-entity>
 
-    <!-- 3D Ray-Intersection Reticle Dots (World-Space Laser Pointer Endpoint) -->
-    <a-sphere id="left-ray-dot" radius="0.016" material="color: #ef4444; shader: flat" visible="false"></a-sphere>
-    <a-sphere id="right-ray-dot" radius="0.016" material="color: #22d3ee; shader: flat" visible="false"></a-sphere>
-    <a-sphere id="mouse-ray-dot" radius="0.012" material="color: #fbbf24; shader: flat" visible="false"></a-sphere>
+    <!-- 3D Ray-Intersection Reticle Dots (World-Space Laser Pointer Endpoints) -->
+    <a-sphere id="left-ray-dot" radius="0.018" material="color: #ef4444; shader: flat" visible="false"></a-sphere>
+    <a-sphere id="right-ray-dot" radius="0.018" material="color: #22d3ee; shader: flat" visible="false"></a-sphere>
+    <a-sphere id="gaze-ray-dot" radius="0.014" material="color: #fbbf24; shader: flat" visible="false"></a-sphere>
 
     <!-- ========================================================================
-         PLAYER CAMERA RIG & META QUEST 3 RAYCASTING CONTROLLERS
-         - Desktop Mouse Raycaster
-         - Left & Right Quest 3 Touch Controllers (Trigger, Grip, A/X, Thumbstick)
-         - Native WebXR Hand-Tracking Pinch Rays
+         PLAYER CAMERA RIG & UNIVERSAL HAND / CONTROLLER / GAZE RAYCASTERS
          ======================================================================== -->
     <a-entity id="camera-rig" position="0 0 4.5" rotation="0 0 0">
       <a-camera id="main-camera" position="0 1.65 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
-        <!-- Desktop Mouse Raycaster -->
+        <!-- Desktop Mouse + VR Head-Gaze Dwell Fallback Raycaster -->
         <a-entity
-          id="mouse-ray"
+          id="gaze-mouse-ray"
           cursor="fuse: false; rayOrigin: mouse"
           raycaster="objects: .interactable; far: 25"
-          quest-ray-controller="dotSelector: #mouse-ray-dot; hand: none"
+          gaze-and-mouse-controller="dotSelector: #gaze-ray-dot; dwellMs: 1200"
         ></a-entity>
       </a-camera>
 
-      <!-- Left VR Controller (Red Laser Ray) -->
+      <!-- Left Universal Pointer (Bare Hand Ray + Pinch OR Left Controller) -->
       <a-entity
-        id="left-hand"
-        laser-controls="hand: left"
-        raycaster="objects: .interactable; far: 25; showLine: true; lineColor: #ef4444; lineOpacity: 0.95"
-        quest-ray-controller="dotSelector: #left-ray-dot; hand: left"
+        id="left-hand-pointer"
+        raycaster="objects: .interactable; far: 25; showLine: false"
+        webxr-universal-pointer="hand: left; dotSelector: #left-ray-dot; lineColor: #ef4444"
       ></a-entity>
 
-      <!-- Right VR Controller (Cyan Laser Ray) -->
+      <!-- Right Universal Pointer (Bare Hand Ray + Pinch OR Right Controller) -->
       <a-entity
-        id="right-hand"
-        laser-controls="hand: right"
-        raycaster="objects: .interactable; far: 25; showLine: true; lineColor: #22d3ee; lineOpacity: 0.95"
-        quest-ray-controller="dotSelector: #right-ray-dot; hand: right"
+        id="right-hand-pointer"
+        raycaster="objects: .interactable; far: 25; showLine: false"
+        webxr-universal-pointer="hand: right; dotSelector: #right-ray-dot; lineColor: #22d3ee"
       ></a-entity>
+
+      <!-- Optional 3D Articulated Hand Meshes for Visual Hand Presence -->
+      <a-entity hand-tracking-controls="hand: left; modelColor: #94a3b8"></a-entity>
+      <a-entity hand-tracking-controls="hand: right; modelColor: #94a3b8"></a-entity>
     </a-entity>
 
     <!-- ========================================================================
@@ -754,9 +919,8 @@
 
     <!-- ========================================================================
          IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE
-         Positioned ergonomically in front-right of player & follows during Climb
          ======================================================================== -->
-    <a-entity id="vr-control-console" position="1.45 1.35 2.3" rotation="0 -28 0">
+    <a-entity id="vr-control-console" position="1.35 1.35 2.4" rotation="0 -28 0">
       
       <!-- 3D Frosted Glass Backing Volume -->
       <a-box
@@ -777,7 +941,7 @@
         material="src: #vr-ui-canvas; transparent: true; shader: flat"
       ></a-plane>
 
-      <!-- Dedicated 3D Button Hitboxes for 100% Reliable Raycast Capture -->
+      <!-- Dedicated 3D Button Hitboxes -->
       <a-box
         class="interactable"
         vr-button-hitbox="stage: 0"
@@ -845,7 +1009,7 @@
         pitchLabel: '2.0° (GROUNDED)',
         heightLabel: '5.5m (HOUSED)',
         rigPos: '0 0 4.5',
-        consolePos: '1.45 1.35 2.3'
+        consolePos: '1.35 1.35 2.4'
       },
       {
         title: 'Stage 2: Under-Running & Pitching to 75° (4:1 Ratio)',
@@ -856,7 +1020,7 @@
         pitchLabel: '75.0° (4:1 OPTIMAL)',
         heightLabel: '5.3m (BASE)',
         rigPos: '0 0 4.5',
-        consolePos: '1.45 1.35 2.3'
+        consolePos: '1.35 1.35 2.4'
       },
       {
         title: 'Stage 3: Extending Fly, Engaging Pawls & Head Bedding',
@@ -867,7 +1031,7 @@
         pitchLabel: '75.0° (PAWLS LOCKED)',
         heightLabel: '8.4m (3 RUNGS OVER)',
         rigPos: '0 0 4.5',
-        consolePos: '1.45 1.35 2.3'
+        consolePos: '1.35 1.35 2.4'
       },
       {
         title: 'Stage 4: Bracing (Footing) & Tactical Ascent to Sill',
@@ -878,7 +1042,7 @@
         pitchLabel: '75.0° (FOOTED)',
         heightLabel: '8.4m (AT SILL POV)',
         rigPos: '0 5.4 -3.1',
-        consolePos: '1.25 6.75 -4.6' // Follows climber up to 2nd floor window so buttons remain operable in VR
+        consolePos: '1.25 6.75 -4.6'
       },
       {
         title: 'Stage 5: Descent, Disengaging Pawls & Making Up',
@@ -889,12 +1053,13 @@
         pitchLabel: '2.0° (MADE UP)',
         heightLabel: '5.5m (HOUSED)',
         rigPos: '0 0 4.5',
-        consolePos: '1.45 1.35 2.3'
+        consolePos: '1.35 1.35 2.4'
       }
     ];
 
     window.currentDrillStage = 0;
     window.currentHoveredBtn = -1;
+    window.dwellProgress = 0;
     window.activeRayHovers = {};
 
     window.updateControllerHover = function (rayId, stageIdx) {
@@ -909,9 +1074,9 @@
 
     window.recomputeHoveredButton = function () {
       let nextHover = -1;
-      const keys = Object.keys(window.activeRayHovers);
-      for (let i = 0; i < keys.length; i++) {
-        const val = window.activeRayHovers[keys[i]];
+      const priorityOrder = ['right-hand-pointer', 'left-hand-pointer', 'gaze-mouse-ray'];
+      for (let i = 0; i < priorityOrder.length; i++) {
+        const val = window.activeRayHovers[priorityOrder[i]];
         if (val !== undefined && val !== -1) {
           nextHover = val;
           break;
@@ -995,7 +1160,7 @@
       const vrConsole = document.getElementById('vr-control-console');
       if (vrConsole) {
         vrConsole.removeAttribute('animation__follow');
-        vrConsole.setAttribute('position', '1.45 1.35 2.3');
+        vrConsole.setAttribute('position', '1.35 1.35 2.4');
       }
     };
 

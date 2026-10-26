@@ -170,106 +170,6 @@
     });
 
     /**
-     * HAND TRACKING BUTTON INPUT
-     * Uses the real WebXR index-finger tip and thumb tip. A deliberate pinch
-     * while the index fingertip is over a button activates it. This avoids
-     * relying on controller laser events, which are not emitted by hand-only input.
-     */
-    AFRAME.registerComponent('hand-pinch-ui', {
-      init: function () {
-        this.lastPinch = new Map();
-        this.lastTouch = new Map();
-        this.buttonEls = [];
-        this._tmp = new THREE.Vector3();
-        this._camPos = new THREE.Vector3();
-      },
-
-      tick: function () {
-        const scene = this.el.sceneEl;
-        const renderer = scene && scene.renderer;
-        const xr = renderer && renderer.xr;
-        const session = xr && xr.getSession();
-        const frame = xr && xr.getFrame();
-        const refSpace = xr && xr.getReferenceSpace();
-        if (!session || !frame || !refSpace) return;
-
-        const consoleEl = document.getElementById('vr-control-console');
-        if (!consoleEl || !consoleEl.object3D) return;
-
-        if (!this.buttonEls.length) {
-          this.buttonEls = Array.from(document.querySelectorAll('[vr-button-collider]'));
-        }
-
-        for (const source of session.inputSources) {
-          if (!source.hand) continue;
-
-          const indexJoint = source.hand.get('index-finger-tip');
-          const thumbJoint = source.hand.get('thumb-tip');
-          if (!indexJoint || !thumbJoint) continue;
-
-          const indexPose = frame.getJointPose(indexJoint, refSpace);
-          const thumbPose = frame.getJointPose(thumbJoint, refSpace);
-          if (!indexPose || !thumbPose) continue;
-
-          const ip = indexPose.transform.position;
-          const tp = thumbPose.transform.position;
-          const indexWorld = new THREE.Vector3(ip.x, ip.y, ip.z);
-          const thumbWorld = new THREE.Vector3(tp.x, tp.y, tp.z);
-          const pinchDistance = indexWorld.distanceTo(thumbWorld);
-          const pinching = pinchDistance < 0.035;
-          const key = source.handedness || 'hand';
-          const wasPinching = this.lastPinch.get(key) || false;
-
-          // Convert the fingertip to each button's local space and test against
-          // the physical hitbox. The hitboxes are intentionally slightly generous.
-          let touchedIndex = -1;
-          let closest = Infinity;
-          for (let i = 0; i < this.buttonEls.length; i++) {
-            const button = this.buttonEls[i];
-            if (!button.object3D.visible) continue;
-            button.object3D.updateWorldMatrix(true, false);
-            const local = button.object3D.worldToLocal(indexWorld.clone());
-            const half = button.getAttribute('geometry') || {};
-            const width = Number(button.getAttribute('width')) || 0.79;
-            const height = Number(button.getAttribute('height')) || 0.14;
-            const depth = Number(button.getAttribute('depth')) || 0.02;
-            if (Math.abs(local.x) <= width / 2 + 0.035 &&
-                Math.abs(local.y) <= height / 2 + 0.045 &&
-                Math.abs(local.z) <= depth / 2 + 0.07) {
-              const d = local.length();
-              if (d < closest) {
-                closest = d;
-                touchedIndex = Number(button.getAttribute('vr-button-collider').stage);
-              }
-            }
-          }
-
-          if (touchedIndex >= 0) {
-            window.setVRButtonHover(touchedIndex);
-          } else if (window.currentHoveredBtn >= 0) {
-            window.setVRButtonHover(-1);
-          }
-
-          // Trigger only on the start of a pinch, and only while touching a button.
-          if (pinching && !wasPinching && touchedIndex >= 0) {
-            window.setDrillStage(touchedIndex);
-            const button = this.buttonEls.find(el =>
-              Number(el.getAttribute('vr-button-collider').stage) === touchedIndex);
-            if (button) {
-              button.setAttribute('animation__press', {
-                property: 'scale', from: '1 1 1', to: '0.96 0.96 0.96',
-                dur: 90, dir: 'alternate', loop: 1
-              });
-            }
-          }
-
-          this.lastPinch.set(key, pinching);
-          this.lastTouch.set(key, touchedIndex);
-        }
-      }
-    });
-
-    /**
      *A-FRAME COMPONENT: xr-ray-Reticle
      * Positions a 3D laser dot at the exact ray-traced surface hit point on the console.
      */
@@ -593,8 +493,6 @@
   <a-scene
     id="xr-scene"
     renderer="antialias: true; colorManagement: true; physicallyCorrectLights: true; highRefreshRate: true; foveationLevel: 2; exposure: 1.1"
-    hand-pinch-ui
-    webxr="optionalFeatures: hand-tracking"
     shadow="type: pcfsoft"
     vr-mode-ui="enabled: true"
   >
@@ -821,7 +719,7 @@
     <!-- ========================================================================
          IN-VR 3D DIEGETIC DRILL CONTROL CONSOLE (Dual Ray-Traced UV + 3D Box Colliders)
          ======================================================================== -->
-    <a-entity id="vr-control-console" position="0 1.35 3.65" rotation="0 180 0" scale="0.62 0.62 0.62">
+    <a-entity id="vr-control-console" position="2.1 1.25 1.8" rotation="0 -35 0">
       
       <!-- 3D Frosted Glass Backing Volume -->
       <a-box
@@ -848,9 +746,9 @@
         class="interactable"
         vr-button-collider="stage: 0"
         position="-0.425 -0.06 0.012"
-        width="0.84"
-        height="0.17"
-        depth="0.08"
+        width="0.79"
+        height="0.14"
+        depth="0.02"
         material="opacity: 0.001; transparent: true; depthWrite: false"
       ></a-box>
 
@@ -858,9 +756,9 @@
         class="interactable"
         vr-button-collider="stage: 1"
         position="0.425 -0.06 0.012"
-        width="0.84"
-        height="0.17"
-        depth="0.08"
+        width="0.79"
+        height="0.14"
+        depth="0.02"
         material="opacity: 0.001; transparent: true; depthWrite: false"
       ></a-box>
 
@@ -868,9 +766,9 @@
         class="interactable"
         vr-button-collider="stage: 2"
         position="-0.425 -0.25 0.012"
-        width="0.84"
-        height="0.17"
-        depth="0.08"
+        width="0.79"
+        height="0.14"
+        depth="0.02"
         material="opacity: 0.001; transparent: true; depthWrite: false"
       ></a-box>
 
@@ -878,9 +776,9 @@
         class="interactable"
         vr-button-collider="stage: 3"
         position="0.425 -0.25 0.012"
-        width="0.84"
-        height="0.17"
-        depth="0.08"
+        width="0.79"
+        height="0.14"
+        depth="0.02"
         material="opacity: 0.001; transparent: true; depthWrite: false"
       ></a-box>
 
@@ -888,9 +786,9 @@
         class="interactable"
         vr-button-collider="stage: 4"
         position="0 -0.44 0.012"
-        width="1.70"
-        height="0.17"
-        depth="0.08"
+        width="1.64"
+        height="0.14"
+        depth="0.02"
         material="opacity: 0.001; transparent: true; depthWrite: false"
       ></a-box>
     </a-entity>
@@ -1019,9 +917,16 @@
         easing: 'easeInOutCubic'
       });
 
-      // Keep the console at comfortable reach in front of the headset.
-      // Stage changes no longer send it high up the tower or away from the user.
-      positionConsoleAtReach();
+      // Keep 3D VR Console within controller ray range during climb
+      const vrConsole = document.getElementById('vr-control-console');
+      if (vrConsole && stage.consolePos) {
+        vrConsole.setAttribute('animation__follow', {
+          property: 'position',
+          to: stage.consolePos,
+          dur: 2200,
+          easing: 'easeInOutCubic'
+        });
+      }
     };
 
     window.resetCameraPov = function () {
@@ -1029,49 +934,16 @@
       cameraRig.removeAttribute('animation__climb');
       cameraRig.setAttribute('position', '0 0 4.5');
 
-      positionConsoleAtReach();
-    };
-
-    window.positionConsoleAtReach = function () {
-      const camera = document.getElementById('main-camera');
-      const panel = document.getElementById('vr-control-console');
-      if (!camera || !panel) return;
-
-      camera.object3D.updateMatrixWorld(true);
-      const worldPos = new THREE.Vector3();
-      const worldDir = new THREE.Vector3();
-      camera.object3D.getWorldPosition(worldPos);
-      camera.object3D.getWorldDirection(worldDir);
-
-      // 0.85 m forward, slightly below eye level; leave the panel in world space
-      // so the user can reach toward it rather than having it glued to their face.
-      const target = worldPos.clone().add(worldDir.multiplyScalar(0.85));
-      target.y = worldPos.y - 0.22;
-      panel.object3D.position.copy(target);
-
-      // Face the panel toward the user's current horizontal viewing direction.
-      const yaw = camera.object3D.rotation.y;
-      panel.object3D.rotation.set(0, yaw + Math.PI, 0);
-      panel.setAttribute('animation__follow', {
-        property: 'position',
-        to: `${target.x} ${target.y} ${target.z}`,
-        dur: 250,
-        easing: 'easeOutQuad'
-      });
+      const vrConsole = document.getElementById('vr-control-console');
+      if (vrConsole) {
+        vrConsole.removeAttribute('animation__follow');
+        vrConsole.setAttribute('position', '2.1 1.25 1.8');
+      }
     };
 
     window.enterQuestVR = function () {
       const sceneEl = document.getElementById('xr-scene');
-      if (!sceneEl) return;
-      // Place the panel just before entering, then once more after WebXR has
-      // established the headset's real tracking pose.
-      window.positionConsoleAtReach();
-      if (sceneEl.enterVR) {
-        const onEntered = () => {
-          window.positionConsoleAtReach();
-          sceneEl.removeEventListener('enter-vr', onEntered);
-        };
-        sceneEl.addEventListener('enter-vr', onEntered);
+      if (sceneEl && sceneEl.enterVR) {
         sceneEl.enterVR();
       }
     };
